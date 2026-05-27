@@ -1,1 +1,263 @@
-<!DOCTYPE html>\n<html lang="en">\n<head>\n    <meta charset="UTF-8">\n    <meta name="viewport" content="width=device-width, initial-scale=1.0">\n    <title>Omok Game</title>\n    <style>\n        body {\n            display: flex;\n            justify-content: center;\n            align-items: center;\n            height: 100vh;\n            margin: 0;\n            background-color: #f0f0f0;\n        }\n        #omokBoard {\n            display: grid;\n            grid-template-columns: repeat(15, 40px);\n            gap: 1px;\n        }\n        .cell {\n            width: 40px;\n            height: 40px;\n            background-color: white;\n            border: 1px solid #ccc;\n            display: flex;\n            justify-content: center;\n            align-items: center;\n        }\n        .cell.black {\n            background-color: black;\n        }\n        .cell.white {\n            background-color: white;\n        }\n    </style>\n</head>\n<body>\n    <div id="omokBoard"></div>\n    <script>\n        const board = document.getElementById('omokBoard');\n        for (let i = 0; i < 225; i++) {\n            const cell = document.createElement('div');\n            cell.classList.add('cell');\n            cell.addEventListener('click', function() {\n                // Add game logic here\n                if (!cell.classList.contains('black') && !cell.classList.contains('white')) {\n                    cell.classList.add('black');\n                }\n            });\n            board.appendChild(cell);\n        }\n    </script>\n</body>\n</html>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZESTMOK - 오목</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a2e;
+      font-family: 'Segoe UI', sans-serif;
+      color: #eee;
+      padding: 20px;
+    }
+
+    h1 {
+      font-size: 2rem;
+      letter-spacing: 4px;
+      margin-bottom: 16px;
+      color: #e0c97f;
+      text-shadow: 0 0 20px rgba(224,201,127,0.4);
+    }
+
+    #status {
+      font-size: 1.1rem;
+      margin-bottom: 16px;
+      height: 28px;
+      color: #ccc;
+      transition: color 0.2s;
+    }
+
+    #status.black-turn { color: #f0f0f0; }
+    #status.white-turn { color: #b0c4de; }
+    #status.winner    { color: #e0c97f; font-weight: bold; font-size: 1.3rem; }
+
+    #board-wrap {
+      position: relative;
+      background: #c8922a;
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+    }
+
+    canvas {
+      display: block;
+      cursor: crosshair;
+    }
+
+    #btn-wrap {
+      margin-top: 20px;
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      padding: 10px 28px;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      background: #e0c97f;
+      color: #1a1a2e;
+      font-weight: bold;
+      letter-spacing: 1px;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    button:hover  { background: #f0d88f; }
+    button:active { transform: scale(0.97); }
+  </style>
+</head>
+<body>
+  <h1>ZESTMOK</h1>
+  <div id="status" class="black-turn">⚫ 흑의 차례</div>
+  <div id="board-wrap">
+    <canvas id="canvas"></canvas>
+  </div>
+  <div id="btn-wrap">
+    <button id="btn-restart">다시 시작</button>
+  </div>
+
+  <script>
+    const LINES   = 15;
+    const CELL    = 40;
+    const PADDING = 24;
+    const SIZE    = CELL * (LINES - 1) + PADDING * 2;
+    const STONE_R = 17;
+
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const status = document.getElementById('status');
+
+    canvas.width  = SIZE;
+    canvas.height = SIZE;
+
+    let board    = [];
+    let turn     = 1;      // 1=black, 2=white
+    let gameOver = false;
+    let winCells = [];
+
+    function init() {
+      board    = Array.from({ length: LINES }, () => Array(LINES).fill(0));
+      turn     = 1;
+      gameOver = false;
+      winCells = [];
+      setStatus();
+      draw();
+    }
+
+    function setStatus(winner) {
+      if (winner === 1) {
+        status.textContent = '🏆 흑 승리!';
+        status.className   = 'winner';
+      } else if (winner === 2) {
+        status.textContent = '🏆 백 승리!';
+        status.className   = 'winner';
+      } else {
+        status.textContent = turn === 1 ? '⚫ 흑의 차례' : '⚪ 백의 차례';
+        status.className   = turn === 1 ? 'black-turn' : 'white-turn';
+      }
+    }
+
+    /* ── 그리기 ── */
+    function draw() {
+      ctx.clearRect(0, 0, SIZE, SIZE);
+      drawGrid();
+      drawStars();
+      drawStones();
+      if (winCells.length) highlightWin();
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = '#8b5e1a';
+      ctx.lineWidth   = 1;
+      for (let i = 0; i < LINES; i++) {
+        const x = PADDING + i * CELL;
+        const y = PADDING + i * CELL;
+        ctx.beginPath(); ctx.moveTo(x, PADDING); ctx.lineTo(x, PADDING + (LINES-1)*CELL); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(PADDING, y); ctx.lineTo(PADDING + (LINES-1)*CELL, y); ctx.stroke();
+      }
+    }
+
+    function drawStars() {
+      const dots = [3,7,11];
+      ctx.fillStyle = '#8b5e1a';
+      dots.forEach(r => dots.forEach(c => {
+        ctx.beginPath();
+        ctx.arc(PADDING + c*CELL, PADDING + r*CELL, 4, 0, Math.PI*2);
+        ctx.fill();
+      }));
+    }
+
+    function drawStone(r, c, color, alpha = 1) {
+      const x = PADDING + c * CELL;
+      const y = PADDING + r * CELL;
+      ctx.globalAlpha = alpha;
+      const grad = ctx.createRadialGradient(x - 5, y - 5, 2, x, y, STONE_R);
+      if (color === 1) {
+        grad.addColorStop(0, '#555'); grad.addColorStop(1, '#000');
+      } else {
+        grad.addColorStop(0, '#fff'); grad.addColorStop(1, '#ccc');
+      }
+      ctx.beginPath();
+      ctx.arc(x, y, STONE_R, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+      ctx.strokeStyle = color === 1 ? '#222' : '#aaa';
+      ctx.lineWidth   = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    function drawStones() {
+      for (let r = 0; r < LINES; r++)
+        for (let c = 0; c < LINES; c++)
+          if (board[r][c]) drawStone(r, c, board[r][c]);
+    }
+
+    function highlightWin() {
+      winCells.forEach(([r, c]) => {
+        const x = PADDING + c * CELL;
+        const y = PADDING + r * CELL;
+        ctx.beginPath();
+        ctx.arc(x, y, STONE_R + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = '#e0c97f';
+        ctx.lineWidth   = 3;
+        ctx.stroke();
+      });
+    }
+
+    /* ── 승리 판정 ── */
+    const DIRS = [[0,1],[1,0],[1,1],[1,-1]];
+
+    function checkWin(r, c, color) {
+      for (const [dr, dc] of DIRS) {
+        const cells = [[r, c]];
+        for (let s of [1, -1]) {
+          let nr = r + dr*s, nc = c + dc*s;
+          while (nr>=0 && nr<LINES && nc>=0 && nc<LINES && board[nr][nc]===color) {
+            cells.push([nr, nc]);
+            nr += dr*s; nc += dc*s;
+          }
+        }
+        if (cells.length >= 5) return cells;
+      }
+      return null;
+    }
+
+    /* ── 입력 ── */
+    function toGrid(px) {
+      return Math.round((px - PADDING) / CELL);
+    }
+
+    canvas.addEventListener('click', e => {
+      if (gameOver) return;
+      const rect = canvas.getBoundingClientRect();
+      const r = toGrid(e.clientY - rect.top);
+      const c = toGrid(e.clientX - rect.left);
+      if (r < 0 || r >= LINES || c < 0 || c >= LINES) return;
+      if (board[r][c]) return;
+
+      board[r][c] = turn;
+      draw();
+
+      const won = checkWin(r, c, turn);
+      if (won) {
+        winCells = won;
+        gameOver = true;
+        draw();
+        setStatus(turn);
+        return;
+      }
+
+      turn = turn === 1 ? 2 : 1;
+      setStatus();
+    });
+
+    /* 고스트 미리보기 */
+    canvas.addEventListener('mousemove', e => {
+      if (gameOver) return;
+      const rect = canvas.getBoundingClientRect();
+      const r = toGrid(e.clientY - rect.top);
+      const c = toGrid(e.clientX - rect.left);
+      draw();
+      if (r >= 0 && r < LINES && c >= 0 && c < LINES && !board[r][c]) {
+        drawStone(r, c, turn, 0.35);
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => { if (!gameOver) draw(); });
+
+    document.getElementById('btn-restart').addEventListener('click', init);
+
+    init();
+  </script>
+</body>
+</html>
