@@ -33,7 +33,8 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
+    overflow-x: hidden;
+    padding: 12px;
   }
 
   /* Background texture */
@@ -477,6 +478,8 @@
     position: absolute;
     top: 0; left: 0;
     cursor: pointer;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* Color selection overlay */
@@ -700,6 +703,28 @@
   .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: #6dcc8a; animation: connPulse 2s ease-in-out infinite; }
   .conn-dot.offline { background: #ff7070; animation: none; }
   @keyframes connPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Mobile / narrow: stack layout, drop mirror panel */
+  @media (max-width: 900px) {
+    body { justify-content: flex-start; }
+    h1 { font-size: 2rem; }
+    header { margin-bottom: 10px; }
+    .game-layout { flex-direction: column; align-items: center; gap: 12px; width: 100%; }
+    .panel { width: 100%; max-width: 480px; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; }
+    .panel:last-child { display: none; }
+    .panel .divider { display: none; }
+    .panel .btn { width: auto; flex: 1 1 40%; padding: 8px; }
+    .player-card { padding: 8px; flex: 1 1 0; min-width: 0; }
+    .player-name { font-size: 0.9rem; }
+    .player-label { letter-spacing: 0; font-size: 0.62rem; }
+    .score-section { flex: 0 0 auto; }
+    .panel .btn { min-width: 0; }
+    .board-wrap { padding: 12px; }
+    .modal, .select-modal, .mode-modal, .room-modal { max-width: calc(100vw - 24px); min-width: 0; padding: 24px 18px; }
+    .mode-cards, .stone-choices { gap: 10px; }
+    .mode-card { width: 120px; padding: 14px 10px; }
+    .stone-choice { padding: 12px 14px; }
+  }
 </style>
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
@@ -811,7 +836,7 @@
     </div>
     <!-- Join room -->
     <div class="room-panel" id="panel-join">
-      <input class="room-input" id="join-code-input" placeholder="CODE" maxlength="4" oninput="this.value=this.value.toUpperCase()">
+      <input class="room-input" id="join-code-input" placeholder="CODE" maxlength="6" oninput="this.value=this.value.toUpperCase()">
       <div class="room-status" id="join-status"></div>
       <button class="btn" onclick="joinRoom()">입장하기</button>
     </div>
@@ -820,7 +845,7 @@
 </div>
 
 <!-- Color selection overlay -->
-<div class="select-overlay show" id="select-overlay">
+<div class="select-overlay" id="select-overlay">
   <div class="select-modal">
     <div class="select-title">돌 선택</div>
     <div class="select-sub">ZEST로 플레이할 돌을 선택하세요</div>
@@ -847,7 +872,7 @@
     <div class="modal-winner" id="modal-winner"></div>
     <div class="modal-sub" id="modal-sub"></div>
     <div class="modal-btns">
-      <button class="btn" onclick="newGame()">다시 하기</button>
+      <button class="btn" onclick="rematch()">다시 하기</button>
       <button class="btn secondary" onclick="closeOverlay()">닫기</button>
     </div>
   </div>
@@ -934,11 +959,50 @@ function showOverlay(id) { document.getElementById(id).classList.add('show'); }
 function hideOverlay(id) { document.getElementById(id).classList.remove('show'); }
 
 // ─── ROOM SYSTEM ──────────────────────────────────────────────
+// ICE: STUN only by default. For strict NAT / mobile networks add a TURN entry below.
+const ICE_SERVERS = [
+  {urls: 'stun:stun.l.google.com:19302'},
+  {urls: 'stun:global.stun.twilio.com:3478'},
+  // {urls: 'turn:YOUR_TURN_HOST:443?transport=tcp', username: 'USER', credential: 'PASS'},
+];
+const PEER_OPTS = {debug: 0, config: {iceServers: ICE_SERVERS}};
+const PEER_PREFIX = 'zestmok-';
+const CODE_LEN = 6;
+const HEARTBEAT_MS = 5000, DEAD_MS = 15000, GRACE_MS = 30000, REJOIN_MS = 3000;
+
+let roomCode = '', createTries = 0;
+let onlineStarted = false, peerLost = false;
+let lastSeen = 0, hbTimer = null, graceTimer = null, rejoinTimer = null;
+let restartPending = false, incomingRestart = false;
+let joinResolve = null; // guest: set while waiting for host's 'welcome'
+
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code = '';
-  for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
+  const buf = crypto.getRandomValues(new Uint8Array(CODE_LEN));
+  return Array.from(buf, b => chars[b % chars.length]).join('');
+}
+
+function errText(err) {
+  const t = err && err.type;
+  if (t === 'peer-unavailable') return '방을 찾을 수 없습니다. 코드를 확인하세요.';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.';
+  if (t === 'webrtc') return '연결 설정에 실패했습니다. 네트워크 환경을 확인하세요.';
+  if (err === 'timeout') return '연결 시간이 초과되었습니다.';
+  return '연결 오류가 발생했습니다.';
+}
+
+// Pure check for a move received from the opponent.
+function isValidMove(msg, b, turn, expected, over) {
+  return !over && turn === expected && !!msg &&
+    Number.isInteger(msg.row) && Number.isInteger(msg.col) &&
+    msg.row >= 0 && msg.row < BOARD_SIZE && msg.col >= 0 && msg.col < BOARD_SIZE &&
+    b[msg.row][msg.col] === 0;
+}
+
+function isValidSync(m) {
+  return m && (m.currentPlayer === 1 || m.currentPlayer === 2) && Array.isArray(m.board) &&
+    m.board.length === BOARD_SIZE &&
+    m.board.every(r => Array.isArray(r) && r.length === BOARD_SIZE && r.every(v => v === 0 || v === 1 || v === 2));
 }
 
 function switchTab(tab) {
@@ -946,7 +1010,7 @@ function switchTab(tab) {
   document.getElementById('tab-join').classList.toggle('active', tab === 'join');
   document.getElementById('panel-create').classList.toggle('active', tab === 'create');
   document.getElementById('panel-join').classList.toggle('active', tab === 'join');
-  if (tab === 'create') initCreateRoom();
+  if (tab === 'create') { createTries = 0; initCreateRoom(); }
   else destroyPeer();
 }
 
@@ -954,44 +1018,81 @@ function initRoomOverlay() {
   switchTab('create');
 }
 
+function setCreateStatus(msg) { document.getElementById('create-status-text').textContent = msg; }
+
 function initCreateRoom() {
   destroyPeer();
-  const code = generateCode();
-  document.getElementById('room-code-display').textContent = code;
-  document.getElementById('create-status-text').textContent = '상대방을 기다리는 중...';
-  // PeerJS: use code as peer ID
-  const peerId = 'gomoku-' + code;
-  peer = new Peer(peerId, {debug: 0});
-  peer.on('open', () => {});
-  peer.on('connection', (c) => {
-    conn = c;
-    setupConn();
+  roomCode = generateCode();
+  document.getElementById('room-code-display').textContent = roomCode;
+  setCreateStatus('상대방을 기다리는 중...');
+  const p = peer = new Peer(PEER_PREFIX + roomCode, PEER_OPTS);
+  p.on('connection', onHostConnection);
+  p.on('disconnected', () => { try { if (peer === p && !p.destroyed) p.reconnect(); } catch (e) {} });
+  p.on('error', (err) => {
+    if (peer !== p) return;
+    if (err.type === 'unavailable-id' && !onlineStarted && createTries++ < 5) return initCreateRoom();
+    if (!onlineStarted) setCreateStatus('오류: ' + errText(err));
+  });
+}
+
+function connAlive() {
+  return !!conn && conn.open && !peerLost && Date.now() - lastSeen < DEAD_MS;
+}
+
+function onHostConnection(c) {
+  if (connAlive()) { // room full
+    c.on('open', () => { try { c.send({type: 'full'}); } catch (e) {} setTimeout(() => c.close(), 300); });
+    return;
+  }
+  if (conn) { const old = conn; conn = null; try { old.close(); } catch (e) {} }
+  conn = c;
+  setupConn(c);
+  c.on('open', () => {
+    if (conn !== c) return;
     onlineRole = 'host';
     myOnlinePlayer = 1;
-    document.getElementById('create-status-text').textContent = '상대방이 연결되었습니다!';
+    send({type: 'welcome'});
+    if (onlineStarted) { sendSync(); resumeOnline(); return; } // guest rejoined
+    setCreateStatus('상대방이 연결되었습니다!');
     setTimeout(() => {
+      if (conn !== c) return;
       hideOverlay('room-overlay');
       startOnlineGame();
     }, 800);
   });
-  peer.on('error', (err) => {
-    document.getElementById('create-status-text').textContent = '오류: ' + err.type;
+}
+
+// Connect to a host room. onOpen/onFail each fire at most once.
+function guestConnect(code, onOpen, onFail) {
+  let done = false;
+  const fail = (e) => { if (!done) { done = true; clearTimeout(t); onFail(e); } };
+  const p = peer = new Peer(undefined, PEER_OPTS);
+  const t = setTimeout(() => fail('timeout'), 12000);
+  p.on('open', () => {
+    const c = p.connect(PEER_PREFIX + code, {reliable: true});
+    c.on('open', () => {
+      if (done || peer !== p) return;
+      done = true; clearTimeout(t);
+      conn = c; setupConn(c); onOpen();
+    });
+    c.on('error', fail);
   });
+  p.on('error', fail);
 }
 
 function joinRoom() {
-  const rawCode = document.getElementById('join-code-input').value.trim().toUpperCase();
-  if (rawCode.length !== 4) {
-    setJoinStatus('4자리 코드를 입력하세요', 'err');
+  const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+  if (code.length !== CODE_LEN) {
+    setJoinStatus(CODE_LEN + '자리 코드를 입력하세요', 'err');
     return;
   }
   setJoinStatus('연결 중...', '');
   destroyPeer();
-  peer = new Peer(undefined, {debug: 0});
-  peer.on('open', () => {
-    conn = peer.connect('gomoku-' + rawCode, {reliable: true});
-    conn.on('open', () => {
-      setupConn();
+  roomCode = code;
+  guestConnect(code, () => {
+    const t = setTimeout(() => { joinResolve = null; destroyPeer(); setJoinStatus('방이 응답하지 않습니다.', 'err'); }, 5000);
+    joinResolve = () => {
+      clearTimeout(t); joinResolve = null;
       onlineRole = 'guest';
       myOnlinePlayer = 2;
       setJoinStatus('연결 성공!', 'ok');
@@ -999,35 +1100,70 @@ function joinRoom() {
         hideOverlay('room-overlay');
         startOnlineGame();
       }, 500);
-    });
-    conn.on('error', () => setJoinStatus('연결 실패. 코드를 확인하세요.', 'err'));
-  });
-  peer.on('error', () => setJoinStatus('연결 실패. 코드를 확인하세요.', 'err'));
+    };
+  }, (err) => { destroyPeer(); setJoinStatus(errText(err), 'err'); });
 }
 
-function setupConn() {
-  conn.on('data', onReceiveData);
-  conn.on('close', () => {
-    setConnStatus(false);
-  });
+function setupConn(c) {
+  lastSeen = Date.now();
+  c.on('data', (d) => { if (c !== conn) return; lastSeen = Date.now(); onReceiveData(d); });
+  c.on('close', () => { if (c === conn) onPeerLost(); });
+  c.on('error', () => { if (c === conn) onPeerLost(); });
 }
+
+function send(msg) { if (conn && conn.open) { try { conn.send(msg); } catch (e) {} } }
 
 function onReceiveData(data) {
-  if (data.type === 'move') {
-    doPlaceStone(data.row, data.col, false);
-  } else if (data.type === 'restart') {
-    remoteRequestedRestart = true;
-    doNewOnlineGame();
+  if (!data || typeof data.type !== 'string') return;
+  if (!onlineStarted) {
+    if (data.type === 'welcome' && joinResolve) joinResolve();
+    else if (data.type === 'full') { destroyPeer(); setJoinStatus('방이 가득 찼습니다.', 'err'); }
+    return;
+  }
+  switch (data.type) {
+    case 'ping': break;
+    case 'move':
+      if (isValidMove(data, board, currentPlayer, 3 - myOnlinePlayer, gameOver)) {
+        doPlaceStone(data.row, data.col, false);
+      } else if (onlineRole === 'host') sendSync();
+      else send({type: 'need-sync'});
+      break;
+    case 'need-sync': if (onlineRole === 'host') sendSync(); break;
+    case 'sync': if (onlineRole === 'guest') applySync(data); break;
+    case 'restart-req':
+      if (restartPending) { send({type: 'restart-ack'}); doNewOnlineGame(); }
+      else { incomingRestart = true; showEndOverlay('다시 하기 요청', '상대가 한 판 더 하자고 합니다. 버튼을 눌러 수락하세요.'); }
+      break;
+    case 'restart-ack': if (restartPending) doNewOnlineGame(); break;
   }
 }
 
-function sendMove(row, col) {
-  if (conn && conn.open) conn.send({type: 'move', row, col});
+function sendMove(row, col) { send({type: 'move', row, col}); }
+
+function sendSync() {
+  send({type: 'sync', board, currentPlayer, gameOver, lastPlaced, winningCells});
+}
+
+function applySync(m) {
+  if (!isValidSync(m)) return;
+  board = m.board; currentPlayer = m.currentPlayer; gameOver = !!m.gameOver;
+  lastPlaced = m.lastPlaced || null; winningCells = Array.isArray(m.winningCells) ? m.winningCells : [];
+  refreshStones(); updateTurn();
+  resumeOnline();
+}
+
+// "다시 하기" in online mode: both sides must agree.
+function onlineRematch() {
+  if (incomingRestart) { send({type: 'restart-ack'}); doNewOnlineGame(); return; }
+  if (!connAlive()) { showEndOverlay('연결 끊김', '상대와 연결되어 있지 않습니다.'); return; }
+  restartPending = true;
+  send({type: 'restart-req'});
+  document.getElementById('modal-sub').textContent = '상대의 수락을 기다리는 중...';
 }
 
 function copyRoomCode() {
   const code = document.getElementById('room-code-display').textContent;
-  if (code === '----') return;
+  if (code === '----' || code.length !== CODE_LEN) return;
   navigator.clipboard.writeText(code).then(() => {
     const el = document.getElementById('room-code-display');
     const orig = el.textContent;
@@ -1042,27 +1178,82 @@ function setJoinStatus(msg, type) {
   el.className = 'room-status' + (type ? ' ' + type : '');
 }
 
-function setConnStatus(online) {
+function setConnStatus(online, text) {
   const s = document.getElementById('conn-status');
   const d = document.getElementById('conn-dot');
   const t = document.getElementById('conn-text');
   s.style.display = 'flex';
   d.className = 'conn-dot' + (online ? '' : ' offline');
-  t.textContent = online ? '연결됨' : '상대방 연결 끊김';
+  t.textContent = text || (online ? '연결됨' : '상대방 연결 끊김');
+}
+
+// ── connection health: heartbeat, grace period, guest auto-rejoin ──
+function startHeartbeat() {
+  clearInterval(hbTimer);
+  hbTimer = setInterval(() => {
+    send({type: 'ping'});
+    if (!peerLost && Date.now() - lastSeen > DEAD_MS) onPeerLost();
+  }, HEARTBEAT_MS);
+}
+
+function onPeerLost() {
+  if (!onlineStarted) { // guest left before the game began
+    if (onlineRole === 'host' && conn) { conn = null; setCreateStatus('상대방을 기다리는 중...'); }
+    return;
+  }
+  if (peerLost) return;
+  peerLost = true;
+  if (gameOver) { setConnStatus(false); return; }
+  setConnStatus(false, '상대방 연결 끊김 — 재접속 대기 중');
+  clearTimeout(graceTimer);
+  graceTimer = setTimeout(abandonOnline, GRACE_MS);
+  if (onlineRole === 'guest') startRejoin();
+}
+
+function resumeOnline() {
+  peerLost = false;
+  lastSeen = Date.now();
+  clearTimeout(graceTimer); clearInterval(rejoinTimer);
+  setConnStatus(true);
+}
+
+function startRejoin() {
+  clearInterval(rejoinTimer);
+  let busy = false;
+  rejoinTimer = setInterval(() => {
+    if (busy || !peerLost) return;
+    busy = true;
+    closeLink();
+    guestConnect(roomCode, () => { busy = false; send({type: 'need-sync'}); }, () => { busy = false; });
+  }, REJOIN_MS);
+}
+
+function abandonOnline() {
+  clearInterval(rejoinTimer);
+  gameOver = true;
+  setConnStatus(false, '연결 종료');
+  showEndOverlay('대국 종료', '상대와 연결이 끊겨 대국이 종료되었습니다. (무효)');
+}
+
+function closeLink() {
+  if (conn) { const c = conn; conn = null; try { c.close(); } catch (e) {} }
+  if (peer) { const p = peer; peer = null; try { p.destroy(); } catch (e) {} }
 }
 
 function destroyPeer() {
-  if (conn) { try { conn.close(); } catch(e){} conn = null; }
-  if (peer) { try { peer.destroy(); } catch(e){} peer = null; }
+  clearInterval(hbTimer); clearInterval(rejoinTimer); clearTimeout(graceTimer);
+  onlineStarted = false; peerLost = false; restartPending = false; incomingRestart = false; joinResolve = null;
+  closeLink();
 }
 
-let remoteRequestedRestart = false;
 
 function startOnlineGame() {
   // host=black(1), guest=white(2)
   humanPlayer = myOnlinePlayer;
   aiPlayer = myOnlinePlayer === 1 ? 2 : 1;
+  onlineStarted = true; peerLost = false; restartPending = incomingRestart = false;
   setConnStatus(true);
+  startHeartbeat();
   updateOnlineBadges();
   document.getElementById('conn-status').style.display = 'flex';
   gameOver = false;
@@ -1350,6 +1541,7 @@ function showWinOverlay(player){
   const winner=document.getElementById('modal-winner');
   const sub=document.getElementById('modal-sub');
   stone.className=`modal-stone ${player===1?'black-stone':'white-stone'}`;
+  stone.style.background=''; stone.style.boxShadow='';
   let isHuman;
   if(gameMode==='ai') isHuman=player===humanPlayer;
   else isHuman=player===myOnlinePlayer;
@@ -1369,7 +1561,19 @@ function showDrawOverlay(){
 
 function closeOverlay(){ document.getElementById('overlay').classList.remove('show'); }
 
+function rematch(){ if(gameMode==='online'&&onlineStarted) onlineRematch(); else newGame(); }
+
+function showEndOverlay(title,sub){
+  const stone=document.getElementById('modal-stone');
+  stone.className='modal-stone';
+  stone.style.background='linear-gradient(135deg,#222 50%,#ccc 50%)';
+  document.getElementById('modal-winner').textContent=title;
+  document.getElementById('modal-sub').textContent=sub;
+  document.getElementById('overlay').classList.add('show');
+}
+
 function newGame(){
+  if(gameMode==='online'&&onlineStarted&&!gameOver&&!confirm('진행 중인 대국에서 나가시겠습니까?'))return;
   closeOverlay();
   destroyPeer();
   document.getElementById('conn-status').style.display='none';
@@ -1378,6 +1582,7 @@ function newGame(){
 
 function doNewOnlineGame(){
   closeOverlay();
+  restartPending=false; incomingRestart=false;
   gameOver=false; aiThinking=false; currentPlayer=1;
   initBoard(); updateTurn(); setAiThinking(false);
 }
@@ -1430,16 +1635,21 @@ document.getElementById('join-code-input').addEventListener('keydown',(e)=>{
 });
 
 function scaleBoard(){
-  const maxW=Math.min(window.innerWidth-480,700);
-  const maxH=window.innerHeight-200;
-  const scale=Math.min(maxW/CANVAS_SIZE,maxH/CANVAS_SIZE,1);
+  const narrow=window.matchMedia('(max-width: 900px)').matches;
+  // chrome = side panels/gaps/paddings around the board (see @media above)
+  // innerWidth is inflated on mobile while the unscaled board overflows; screen.width is not
+  const vw=Math.min(window.innerWidth,screen.width);
+  const maxW=narrow?vw-52:Math.min(window.innerWidth-520,700);
+  const maxH=narrow?Math.max(window.innerHeight-300,300):window.innerHeight-200;
+  const scale=Math.max(0.3,Math.min(maxW/CANVAS_SIZE,maxH/CANVAS_SIZE,1));
   const surface=document.getElementById('board-surface');
   surface.style.transform=`scale(${scale})`;
   surface.style.transformOrigin='top left';
-  document.querySelector('.board-wrap').style.width=(CANVAS_SIZE*scale+48)+'px';
-  document.querySelector('.board-wrap').style.height=(CANVAS_SIZE*scale+80)+'px';
+  // transform doesn't change layout size: shrink layout box so wrap/indicators fit
+  surface.style.marginRight=surface.style.marginBottom=-(CANVAS_SIZE*(1-scale))+'px';
 }
 window.addEventListener('resize',scaleBoard);
+window.addEventListener('orientationchange',scaleBoard);
 
 // Init
 initBoard(); updateTurn(); updateScores(); scaleBoard();
