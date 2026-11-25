@@ -90,13 +90,16 @@ try {
   const prog = (ps, t) => Promise.all(ps.map(p => p.waitForFunction(t => document.getElementById('vote-text').textContent.includes(t), t, W))).then(() => true, () => false);
   const btns = (p) => p.evaluate(() => !document.getElementById('vote-btns').hidden);
   await start(V);
-  await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
-  ok('opponent has no draw button off-turn', await Vz.evaluate(() => document.getElementById('btn-draw').hidden && !document.getElementById('btn-resign').hidden));
+  await Vh.waitForFunction(() => !document.getElementById('btn-draw').disabled, null, W);
+  ok('off-turn player: both buttons shown and usable', await Vz.waitForFunction(() => { const d = document.getElementById('btn-draw'), r = document.getElementById('btn-resign'); return !d.hidden && !d.disabled && !r.hidden && !r.disabled; }, null, W).then(() => true, () => false));
   // 1) draw: everyone else asked at once, progress 1/4 -> 2/4 -> 3/4 -> pass
   await Vh.evaluate(() => offerDraw());
   for (const p of [Vy, Vz, Vw]) await asked(p);
   ok('draw asks both teams at once, proposer has no buttons', !(await btns(Vh)));
   ok('progress 1/4 for everyone', await prog(V, '동의 1/4'));
+  const inPanel = (p) => p.evaluate(() => { const b = document.getElementById('vote-box'), a = document.querySelector('.actions'); return !!b.closest('.panel') && !b.hidden && a.hidden && getComputedStyle(a).display === 'none' && !document.querySelector('.board-wrap').contains(b); });
+  ok('vote box in the panel, action buttons hidden (voter + proposer)', (await inPanel(Vz)) && (await inPanel(Vh)));
+  ok('vote text format', /^Vh님의 무승부 제안 · 동의 1\/4 \(\d+초\)$/.test(await Vz.textContent('#vote-text')));
   await Vy.evaluate(() => tmVoteReply(true)); ok('progress 2/4', await prog(V, '동의 2/4'));
   ok('answered player loses buttons', !(await btns(Vy)) && await btns(Vz));
   await Vz.evaluate(() => tmVoteReply(true)); ok('progress 3/4', await prog(V, '동의 3/4'));
@@ -106,21 +109,27 @@ try {
   await Vh.evaluate(() => tmRematch()); for (const p of V) await p.waitForFunction(() => !TM.started, null, W);
   await start(V);
   // 2) one opponent refuses: cancelled, game goes on
-  await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
+  await Vh.waitForFunction(() => !document.getElementById('btn-draw').disabled, null, W);
   await Vh.evaluate(() => offerDraw()); await asked(Vz);
   await Vy.evaluate(() => tmVoteReply(true)); await prog(V, '동의 2/4');
   await Vz.evaluate(() => tmVoteReply(false)); await noVote(V);
   ok('one opponent refuses -> cancelled, game goes on', await Vw.evaluate(() => !gameOver && TM.started));
+  ok('action buttons back after the vote', (await Promise.all(V.map(p => p.evaluate(() => { const a = document.querySelector('.actions'); return !a.hidden && getComputedStyle(a).display !== 'none' && document.getElementById('vote-box').hidden && !document.getElementById('btn-resign').hidden; })))).every(Boolean));
   ok('proposer told who refused', await Vh.waitForFunction(() => document.getElementById('vote-note').textContent === 'Vz님이 무승부 제안을 거절했습니다 — 게임이 계속됩니다!', null, W).then(() => true, () => false));
   // 3) no answer within the (shortened) time: cancelled; that was the 2nd vote -> no more buttons
-  await Vh.evaluate(() => { VOTE_MS = 1500; }); await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
+  await Vh.evaluate(() => { VOTE_MS = 1500; }); await Vh.waitForFunction(() => !document.getElementById('btn-draw').disabled, null, W);
   await Vh.evaluate(() => offerDraw()); await asked(Vy); await noVote(V);
   ok('vote timeout -> cancelled + notice', await Vh.evaluate(() => !gameOver && document.getElementById('vote-note').textContent.startsWith('응답이 없어')));
   ok('2 draws used -> draw disabled (still shown), resign still usable', await Vh.waitForFunction(() => { const d = document.getElementById('btn-draw'), r = document.getElementById('btn-resign'); return !d.hidden && d.disabled && !r.hidden && !r.disabled; }, null, W).then(() => true, () => false));
   ok('guest sees host-side count', await Vy.waitForFunction(() => TM.votes[TM.players[0].id] === 2, null, W).then(() => true, () => false));
+  // 3b) off-turn draw offer works (white Vz while black is to move); host Vh refuses
+  await Vz.waitForFunction(() => !document.getElementById('btn-draw').disabled, null, W);
+  ok('off-turn draw offer starts a vote', await Vz.evaluate(() => { offerDraw(); return currentPlayer === 1; }) && await asked(Vh).then(() => true, () => false));
+  ok('during a vote both buttons shown but disabled', await Vh.evaluate(() => { const d = document.getElementById('btn-draw'), r = document.getElementById('btn-resign'); return !d.hidden && d.disabled && r.disabled && r.title === '투표가 진행 중입니다'; }));
+  await Vh.evaluate(() => tmVoteReply(false)); await noVote(V);
   // 4) resign asks only own teammates: Vy resigns, host Vh agrees (1/2 -> pass) -> white wins
   await Vh.evaluate(() => { VOTE_MS = 20000; });
-  await Vy.waitForFunction(() => !document.getElementById('btn-resign').hidden, null, W); await Vy.evaluate(() => resign()); await asked(Vh);
+  await Vy.waitForFunction(() => !document.getElementById('btn-resign').disabled, null, W); await Vy.evaluate(() => resign()); await asked(Vh);
   ok('resign progress 1/2', await prog(V, '동의 1/2'));
   ok('resign does not ask the other team', !(await btns(Vz)) && !(await btns(Vw)));
   await Vh.evaluate(() => tmVoteReply(true));
@@ -131,7 +140,7 @@ try {
   await Vw.ctx.close(); await Vh.waitForFunction(() => TM.players[3].online === false, null, W);
   await Vh.evaluate(() => tmRematch()); const V3 = [Vh, Vy, Vz];
   for (const p of V3) await p.waitForFunction(() => !TM.started && TM.players.length === 3, null, W);
-  await start(V3); await Vz.waitForFunction(() => !document.getElementById('btn-resign').hidden, null, W); await Vz.evaluate(() => resign());
+  await start(V3); await Vz.waitForFunction(() => !document.getElementById('btn-resign').disabled, null, W); await Vz.evaluate(() => resign());
   for (const p of V3) await p.waitForFunction(() => gameOver && TM.result && TM.result.winner === 1 && TM.result.reason === 'resign', null, W);
   ok('solo resign: immediate loss', true);
   ok('no page errors (votes)', V.reduce((n, p) => n + p.errs.length, 0) === 0);

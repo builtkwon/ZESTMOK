@@ -5,7 +5,7 @@
 > 2026-11 추가: **무승부 제안 · 항복 투표** (방장이 진행·검증). 무승부 제안은 한 판에 한 사람당 2번(`snap.votes {id: n}`, 방장 승계 후에도 유지, 다 쓰면 버튼 비활성), 항복은 횟수 제한 없음.
 > | 방향 | 메시지 | 방장 검증 |
 > |---|---|---|
-> | G→H | `{type:'vote-start', kind:'draw'\|'resign'}` | 대국 중, 진행 중 투표 없음; 무승부는 보낸 사람 팀 차례 + 남은 횟수 있을 때만 |
+> | G→H | `{type:'vote-start', kind:'draw'\|'resign'}` | 대국 중, 진행 중 투표 없음; 무승부는 남은 횟수 있을 때만 (차례 무관) |
 > | H→G | `{type:'vote', kind, from, ask:[ids], yes:[ids], ends}` | `ask`는 시작 때 한 번 고정(`TeamLogic.voteAsk`): 무승부 = 제안자 뺀 접속자 전원(양 팀), 항복 = 제안자의 접속 중 팀원. `ask` 중 `yes`에 없는 사람에게만 동의/거절 버튼. `ends` = 남은 ms. 모두에게 "동의 (yes+1)/(ask+1)" 표시(제안자는 동의로 셈) |
 > | G→H | `{type:'vote-reply', ok}` | `ask`에 있고 아직 답 안 한 id만 유효; 거절 1번이면 취소 |
 > | H→G | `{type:'vote', kind, from, cancelled:true, why, by}` | `why`: `refused`(by = 거절한 id) / `timeout` / `left`(제안자·상대 팀 이탈) / 없음(대국 종료, 성립 포함). 모두에게 판 아래 알림 "… — 게임이 계속됩니다!" |

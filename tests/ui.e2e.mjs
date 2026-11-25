@@ -66,7 +66,12 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   await p.evaluate(()=>{closeOverlay();selectColor(1);scores={1:0,2:0};aiHist=[{p:1,row:7,col:7,key:GomokuAI.posKey(board,1)}];board[7][7]=1;refreshStones();const L=GomokuAI.learn;GomokuAI.learn=(h,ai,w)=>{window.learned=[ai,w];return L(h,ai,w)};}); await p.waitForTimeout(200);
   await p.click('#btn-resign'); await p.waitForTimeout(300);
   ok(name+' resign: confirm, AI wins', dialogs.some(m=>m==='정말 항복할까요?') && await p.evaluate(()=>gameOver&&scores[2]===1&&document.getElementById('modal-sub').textContent==='항복했습니다'&&String(window.learned)==='2,2'));
-  await p.evaluate(()=>closeOverlay());
+  ok(name+' after the game: buttons shown, disabled with reason', await vis('btn-draw') && await p.evaluate(()=>{const d=document.getElementById('btn-draw'),r=document.getElementById('btn-resign');return d.disabled&&r.disabled&&r.title==='진행 중인 대국이 없습니다';}));
+  await p.evaluate(()=>{closeOverlay();selectColor(1);aiThinking=true;ctlRender();});
+  ok(name+' AI thinking: draw disabled', await p.evaluate(()=>document.getElementById('btn-draw').disabled&&document.getElementById('btn-draw').title==='AI가 생각 중입니다'));
+  await p.evaluate(()=>{aiThinking=false;currentPlayer=2;ctlRender();});
+  ok(name+' AI mode: draw usable on AI turn too', await p.evaluate(()=>!document.getElementById('btn-draw').disabled));
+  await p.evaluate(()=>{currentPlayer=1;});
   const fonts=await p.evaluate(()=>getComputedStyle(document.body).fontFamily); 
   ok(name+' no page errors '+JSON.stringify(errs), errs.length===0);
   await ctx.close();
