@@ -93,13 +93,11 @@
       }
     return best;
   }
-  // Who must agree, as groups asked in order (online only, proposer excluded, empty groups dropped):
-  // draw = own team, then the opponents; resign = own team only.
+  // Who must agree (online only, proposer excluded): draw = everyone else, resign = own teammates.
   function voteAsk(players, kind, fromId) {
     const me = players.find(p => p.id === fromId);
     if (!me) return [];
-    const ids = (t) => members(players, t).filter(p => p.id !== fromId).map(p => p.id);
-    return (kind === 'draw' ? [ids(me.team), ids(3 - me.team)] : [ids(me.team)]).filter(g => g.length);
+    return players.filter(p => p.online && p.id !== fromId && (kind === 'draw' || p.team === me.team)).map(p => p.id);
   }
 
   const api = { MAX_PLAYERS, MAX_TEAM, WIPE_MS, mover, advance, wiped, canPick, canStart, autoTeam, successor, cleanName, validMove, validSnap, BYO_MS, BYO_N, validRule, clockInit, budget, spend, view, validClock, bestWindow, voteAsk };

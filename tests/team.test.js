@@ -96,15 +96,15 @@ assert.strictEqual(T.cleanName(null), '');
   assert.strictEqual(T.bestWindow(s, 1), 3);
   assert.strictEqual(T.bestWindow(s, 2), 1);
 }
-// voteAsk: who must agree, in order; online only
+// voteAsk: who must agree; online only, proposer excluded
 {
-  const ps = [P('a', 1), P('b', 2), P('c', 1), P('d', 2), P('e', 1, false)];
-  assert.deepStrictEqual(T.voteAsk(ps, 'draw', 'a'), [['c'], ['b', 'd']], 'draw: own team first, then opponents; offline e skipped');
-  assert.deepStrictEqual(T.voteAsk(ps, 'resign', 'a'), [['c']], 'resign: own team only');
-  assert.deepStrictEqual(T.voteAsk(ps, 'draw', 'b'), [['d'], ['a', 'c']]);
+  const ps = [P('a', 1), P('b', 2), P('c', 1), P('d', 2), P('e', 1, false), P('f', 2, false)];
+  assert.deepStrictEqual(T.voteAsk(ps, 'draw', 'a'), ['b', 'c', 'd'], 'draw: everyone online but the proposer, both teams');
+  assert.deepStrictEqual(T.voteAsk(ps, 'resign', 'a'), ['c'], 'resign: online teammates only (offline e excluded)');
+  assert.deepStrictEqual(T.voteAsk(ps, 'resign', 'b'), ['d'], 'offline f excluded');
   const solo = [P('a', 1), P('b', 2), P('c', 2)];
   assert.deepStrictEqual(T.voteAsk(solo, 'resign', 'a'), [], 'solo team: nobody to ask');
-  assert.deepStrictEqual(T.voteAsk(solo, 'draw', 'a'), [['b', 'c']]);
-  assert.deepStrictEqual(T.voteAsk([P('a', 1), P('b', 2, false)], 'draw', 'a'), [], 'offline opponent not asked');
+  assert.deepStrictEqual(T.voteAsk(solo, 'draw', 'a'), ['b', 'c']);
+  assert.deepStrictEqual(T.voteAsk(ps, 'draw', 'zz'), [], 'unknown proposer');
 }
 console.log('team tests passed');
