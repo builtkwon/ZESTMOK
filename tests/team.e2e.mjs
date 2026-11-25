@@ -74,5 +74,65 @@ try {
   await Y.waitForFunction(() => gameOver && TM.result && TM.result.winner === 2 && TM.result.reason === 'time', null, { timeout: 15000 }); ok('blitz timeout: black loses', true);
   ok('loser sees time-out text', await X.waitForFunction(() => document.getElementById('modal-sub').textContent === '시간 초과로 졌습니다.', null, W).then(() => true));
   ok('no page errors (blitz)', X.errs.length + Y.errs.length === 0);
+  // votes: 2v2 (black: Vh host + Vy, white: Vz + Vw). Host answers through the same path.
+  const Vh = await mk('Vh'), Vy = await mk('Vy'), Vz = await mk('Vz'), Vw = await mk('Vw');
+  const V = [Vh, Vy, Vz, Vw];
+  for (const p of V) p.on('dialog', d => d.accept());
+  await Vh.evaluate(() => teamCreate(1)); await Vh.waitForFunction(() => TM && TM.joined, null, W);
+  const vc = await Vh.evaluate(() => TM.code);
+  for (const p of [Vy, Vz, Vw]) await join(p, vc);
+  await Vh.waitForFunction(() => TM.players.length === 4, null, W);
+  await Vy.evaluate(() => teamPick(1)); await Vz.evaluate(() => teamPick(2));
+  await Vh.waitForFunction(() => TM.players.map(p => p.team).join() === '1,1,2,2', null, W);
+  const start = async (ps) => { await Vh.evaluate(() => teamStart()); for (const p of ps) await p.waitForFunction(() => TM.started && !gameOver, null, W); };
+  const asked = (p) => p.waitForFunction(() => TM.vq && !document.getElementById('vote-btns').hidden && !document.getElementById('vote-box').hidden, null, W);
+  const noVote = (ps) => Promise.all(ps.map(p => p.waitForFunction(() => !TM.vq && document.getElementById('vote-box').hidden, null, W)));
+  const prog = (ps, t) => Promise.all(ps.map(p => p.waitForFunction(t => document.getElementById('vote-text').textContent.includes(t), t, W))).then(() => true, () => false);
+  const btns = (p) => p.evaluate(() => !document.getElementById('vote-btns').hidden);
+  await start(V);
+  await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
+  ok('opponent has no draw button off-turn', await Vz.evaluate(() => document.getElementById('btn-draw').hidden && !document.getElementById('btn-resign').hidden));
+  // 1) draw: everyone else asked at once, progress 1/4 -> 2/4 -> 3/4 -> pass
+  await Vh.evaluate(() => offerDraw());
+  for (const p of [Vy, Vz, Vw]) await asked(p);
+  ok('draw asks both teams at once, proposer has no buttons', !(await btns(Vh)));
+  ok('progress 1/4 for everyone', await prog(V, '동의 1/4'));
+  await Vy.evaluate(() => tmVoteReply(true)); ok('progress 2/4', await prog(V, '동의 2/4'));
+  ok('answered player loses buttons', !(await btns(Vy)) && await btns(Vz));
+  await Vz.evaluate(() => tmVoteReply(true)); ok('progress 3/4', await prog(V, '동의 3/4'));
+  await Vw.evaluate(() => tmVoteReply(true));
+  for (const p of V) await p.waitForFunction(() => gameOver && TM.result && TM.result.draw && TM.result.reason === 'agreed' && document.getElementById('modal-sub').textContent === '합의 무승부', null, W);
+  ok('draw vote passed -> 합의 무승부 everywhere', true);
+  await Vh.evaluate(() => tmRematch()); for (const p of V) await p.waitForFunction(() => !TM.started, null, W);
+  await start(V);
+  // 2) one opponent refuses: cancelled, game goes on
+  await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
+  await Vh.evaluate(() => offerDraw()); await asked(Vz);
+  await Vy.evaluate(() => tmVoteReply(true)); await prog(V, '동의 2/4');
+  await Vz.evaluate(() => tmVoteReply(false)); await noVote(V);
+  ok('one opponent refuses -> cancelled, game goes on', await Vw.evaluate(() => !gameOver && TM.started));
+  // 3) no answer within the (shortened) time: cancelled; that was the 2nd vote -> no more buttons
+  await Vh.evaluate(() => { VOTE_MS = 1500; }); await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
+  await Vh.evaluate(() => offerDraw()); await asked(Vy); await noVote(V);
+  ok('vote timeout -> cancelled', await Vh.evaluate(() => !gameOver));
+  ok('2 votes used -> buttons hidden', await Vh.waitForFunction(() => document.getElementById('btn-draw').hidden && document.getElementById('btn-resign').hidden, null, W).then(() => true));
+  ok('guest sees host-side count', await Vy.waitForFunction(() => TM.votes[TM.players[0].id] === 2, null, W).then(() => true, () => false));
+  // 4) resign asks only own teammates: Vy resigns, host Vh agrees (1/2 -> pass) -> white wins
+  await Vh.evaluate(() => { VOTE_MS = 20000; });
+  await Vy.waitForFunction(() => !document.getElementById('btn-resign').hidden, null, W); await Vy.evaluate(() => resign()); await asked(Vh);
+  ok('resign progress 1/2', await prog(V, '동의 1/2'));
+  ok('resign does not ask the other team', !(await btns(Vz)) && !(await btns(Vw)));
+  await Vh.evaluate(() => tmVoteReply(true));
+  for (const p of V) await p.waitForFunction(() => gameOver && TM.result && TM.result.winner === 2 && TM.result.reason === 'resign', null, W);
+  ok('resign vote passed -> white wins', await Vz.waitForFunction(() => document.getElementById('modal-sub').textContent === '상대 팀이 항복했습니다!', null, W).then(() => true));
+  ok('loser sees 항복', (await Vy.textContent('#modal-sub')) === '항복했습니다.');
+  // 5) solo team: Vw leaves, Vz alone on white -> confirm only
+  await Vw.ctx.close(); await Vh.waitForFunction(() => TM.players[3].online === false, null, W);
+  await Vh.evaluate(() => tmRematch()); const V3 = [Vh, Vy, Vz];
+  for (const p of V3) await p.waitForFunction(() => !TM.started && TM.players.length === 3, null, W);
+  await start(V3); await Vz.waitForFunction(() => !document.getElementById('btn-resign').hidden, null, W); await Vz.evaluate(() => resign());
+  for (const p of V3) await p.waitForFunction(() => gameOver && TM.result && TM.result.winner === 1 && TM.result.reason === 'resign', null, W);
+  ok('solo resign: immediate loss', true);
+  ok('no page errors (votes)', V.reduce((n, p) => n + p.errs.length, 0) === 0);
 } catch (e) { console.error(e); process.exitCode = 1; for (const p of [A, C]) console.log(await p.evaluate(() => JSON.stringify({ role: TM.role, migr: TM.migr, busy: TM.busy, peer: !!TM.peer, conn: !!TM.conn, h: TM.hostId, p: TM.players.map(x => x.name + x.online) })).catch(e => String(e))); }
 await b.close();

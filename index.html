@@ -239,6 +239,11 @@
 
   .btn:active { transform: scale(0.97); }
 
+  /* nobody can make five any more: the draw button lights up */
+  .btn.hot { background: var(--accent-gold); color: var(--bg); animation: hot 1.6s ease-in-out infinite; }
+  @keyframes hot { 50% { box-shadow: 0 0 18px rgba(212,168,67,0.7); } }
+  @media (prefers-reduced-motion: reduce) { .btn.hot { animation: none; } }
+
   .btn.secondary {
     border-color: rgba(212,168,67,0.3);
     color: var(--text-secondary);
@@ -824,6 +829,8 @@
     <div class="divider"></div>
 
     <button class="btn" onclick="newGame()">새 게임</button>
+    <button class="btn" id="btn-draw" onclick="offerDraw()" hidden>무승부 제안</button>
+    <button class="btn secondary" id="btn-resign" onclick="resign()" hidden>항복</button>
     <button class="btn secondary" onclick="resetScore()">전적 초기화</button>
   </div>
 
@@ -842,6 +849,8 @@
     </div>
     <div class="conn-status" id="conn-status" style="display:none"><div class="conn-dot" id="conn-dot"></div><span id="conn-text">연결됨</span></div>
     <div class="room-status err" id="team-banner" role="status" style="text-align:center;margin:6px 0 0"></div>
+    <div class="room-status" id="vote-box" role="status" style="text-align:center;margin:6px 0 0" hidden><span id="vote-text"></span>
+      <span id="vote-btns"> <button type="button" class="level-chip" onclick="tmVoteReply(true)">동의</button> <button type="button" class="level-chip" onclick="tmVoteReply(false)">거절</button></span></div>
     <div class="ai-thinking" id="ai-thinking"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div><span style="margin-left:6px">AI 생각 중...</span></div>
   </div>
 
@@ -1152,7 +1161,7 @@ function tmSid() {
 function tmBase(role, code) {
   return {role, code, me: tmSid(), name: TeamLogic.cleanName(document.getElementById('team-name').value) || 'Player',
     peer: null, conn: null, conns: {}, seen: {}, wipe: {}, until: {}, players: [], started: false, turn: null, result: null,
-    hostId: '', rule: RULE, lastSeen: Date.now(), hb: null, tick: null, rejoin: null, migr: null, busy: false, joined: false, sig: '', ann: '', endShown: false};
+    hostId: '', rule: RULE, lastSeen: Date.now(), hb: null, tick: null, rejoin: null, migr: null, busy: false, joined: false, sig: '', ann: '', endShown: false, votes: {}, vote: null, vq: null};
 }
 const tmMe = () => TM && TM.players.find(p => p.id === TM.me);
 const tmMyTeam = () => { const m = tmMe(); return m ? m.team : 1; };
@@ -1197,8 +1206,8 @@ function tmLeave() {
   if (!TM) return;
   const t = TM; tmClearLink(); TM = null;
   clearInterval(t.hb); clearInterval(t.tick); clearInterval(t.rejoin); clearTimeout(t.retry); clearTimeout(t.prune);
-  Object.values(t.wipe).forEach(clearTimeout);
-  document.getElementById('team-banner').textContent = '';
+  Object.values(t.wipe).forEach(clearTimeout); if (t.vote) clearTimeout(t.vote.timer);
+  document.getElementById('team-banner').textContent = ''; document.getElementById('vote-box').hidden = true;
   document.getElementById('conn-status').style.display = 'none';
   clockStop();
 }
@@ -1261,6 +1270,8 @@ function tmHostData(c, d) {
   TM.seen[id] = Date.now();
   if (d.type === 'team') tmHostPick(id, d.team);
   else if (d.type === 'move') tmHostMove(id, d);
+  else if (d.type === 'vote-start') tmHostVoteStart(id, d.kind);
+  else if (d.type === 'vote-reply') tmHostVoteReply(id, d.ok === true);
 }
 function tmHostHello(c, d) {
   const id = d.id;
@@ -1284,7 +1295,7 @@ function tmHostDrop(c) {
   delete TM.conns[id];
   const p = TM.players.find(x => x.id === id);
   if (p) { if (TM.started) p.online = false; else TM.players = TM.players.filter(x => x !== p); }
-  tmUpdateWipe();
+  tmUpdateWipe(); tmHostVoteStep();
   tmBroadcast();
 }
 function tmHostPick(id, team) {
@@ -1294,7 +1305,7 @@ function tmHostPick(id, team) {
 function tmHostStart() {
   if (TM.started || !TeamLogic.canStart(TM.players).ok) return;
   initBoard(); gameOver = false;
-  TM.started = true; TM.result = null; TM.turn = {team: 1, n: {1: 0, 2: 0}};
+  TM.started = true; TM.result = null; TM.turn = {team: 1, n: {1: 0, 2: 0}}; TM.votes = {};
   clockStart(TM.rule);
   tmBroadcast();
 }
@@ -1345,12 +1356,80 @@ function tmWipeFire(t) {
   TM.until = {}; TM.wipe = {};
   tmBroadcast();
 }
+// ── votes (draw offer / resign): host runs them, everyone (host too) answers via tmVoteReply ──
+// TM.vote = {kind, from, ask: [ids fixed at start], yes: [ids], until, timer}. A player who drops leaves `ask`.
+function tmVoteStart(kind) { if (TM.role === 'host') tmHostVoteStart(TM.me, kind); else tmSend({type: 'vote-start', kind}); }
+function tmVoteReply(ok) {
+  if (!TM || !TM.vq) return;
+  if (TM.role === 'host') tmHostVoteReply(TM.me, ok); else tmSend({type: 'vote-reply', ok});
+  document.getElementById('vote-btns').hidden = true;
+}
+function tmHostVoteStart(id, kind) {
+  const p = TM.players.find(x => x.id === id);
+  if (!p || !TM.started || gameOver || TM.vote || (kind !== 'draw' && kind !== 'resign') || (TM.votes[id] || 0) >= VOTE_MAX) return;
+  if (kind === 'draw' && TM.turn.team !== p.team) return;
+  TM.votes[id] = (TM.votes[id] || 0) + 1;
+  TM.vote = {kind, from: id, ask: TeamLogic.voteAsk(TM.players, kind, id), yes: [], until: Date.now() + VOTE_MS, timer: setTimeout(() => tmHostVoteEnd(), VOTE_MS)};
+  tmBroadcast(); // carries the new vote count
+  tmHostVoteStep();
+}
+// drop players gone offline; pass once every remaining id in `ask` said yes
+function tmHostVoteStep() {
+  const v = TM.vote;
+  if (!v) return;
+  const on = (id) => TM.players.some(p => p.id === id && p.online), me = TM.players.find(p => p.id === v.from);
+  v.ask = v.ask.filter(on); v.yes = v.yes.filter(on);
+  if (!on(v.from)) return tmHostVoteEnd();
+  if (v.kind === 'draw' && !v.ask.some(id => TM.players.find(p => p.id === id).team !== me.team)) return tmHostVoteEnd(); // never a draw without the other side
+  if (v.ask.every(id => v.yes.includes(id))) return tmHostVoteEnd(true);
+  tmVoteSend({type: 'vote', kind: v.kind, from: v.from, ask: v.ask, yes: v.yes, ends: Math.max(0, v.until - Date.now())});
+}
+function tmHostVoteReply(id, ok) {
+  const v = TM.vote;
+  if (!v || !v.ask.includes(id) || v.yes.includes(id)) return;
+  if (!ok) return tmHostVoteEnd();
+  v.yes.push(id); tmHostVoteStep();
+}
+// passed = apply the result; otherwise just cancel (refusal, timeout, game end, proposer gone)
+function tmHostVoteEnd(passed) {
+  const v = TM.vote;
+  if (!v) return;
+  clearTimeout(v.timer); TM.vote = null;
+  tmVoteSend({type: 'vote', kind: v.kind, from: v.from, cancelled: true});
+  if (!passed || !TM.started || gameOver) return;
+  const p = TM.players.find(x => x.id === v.from);
+  gameOver = true;
+  if (v.kind === 'draw') TM.result = {draw: true, reason: 'agreed'};
+  else { scores[3 - p.team]++; TM.result = {winner: 3 - p.team, reason: 'resign'}; }
+  tmUpdateWipe(); tmBroadcast();
+}
+function tmVoteSend(m) {
+  for (const id of Object.keys(TM.conns)) { try { TM.conns[id].send(m); } catch (e) {} }
+  tmOnVote(m);
+}
+// everyone: show the vote under the board
+function tmOnVote(d) {
+  const ids = (a) => Array.isArray(a) ? a.filter(x => typeof x === 'string') : [];
+  TM.vq = d.cancelled || (d.kind !== 'draw' && d.kind !== 'resign') || typeof d.from !== 'string' ? null
+    : {kind: d.kind, from: d.from, ask: ids(d.ask), yes: ids(d.yes), until: Date.now() + (Number.isFinite(d.ends) ? Math.min(d.ends, 60000) : 0)};
+  document.getElementById('vote-btns').hidden = !(TM.vq && TM.vq.ask.includes(TM.me) && !TM.vq.yes.includes(TM.me));
+  tmVoteRender(); ctlRender();
+}
+function tmVoteRender() {
+  const q = TM && TM.vq, box = document.getElementById('vote-box');
+  box.hidden = !q;
+  if (!q) return;
+  const who = (TM.players.find(p => p.id === q.from) || {}).name || '?';
+  document.getElementById('vote-text').textContent = `${who}: ${q.kind === 'draw' ? '무승부 제안' : '항복 제안'} — 동의 ${q.yes.length + 1}/${q.ask.length + 1} · ${Math.max(0, Math.ceil((q.until - Date.now()) / 1000))}초`;
+}
+
 function tmSnap() {
   const cd = Object.keys(TM.until).map(t => ({team: +t, ms: Math.max(0, TM.until[t] - Date.now())}));
-  return {type: 'snap', hostId: TM.hostId, players: TM.players, started: TM.started, turn: TM.turn, board, scores, gameOver, lastPlaced, winningCells, result: TM.result, cd,
+  return {type: 'snap', hostId: TM.hostId, players: TM.players, started: TM.started, turn: TM.turn, board, scores, gameOver, lastPlaced, winningCells, result: TM.result, cd, votes: TM.votes,
     rule: TM.rule, clock: CLK && TM.started ? {side: CLK.side, used: Date.now() - CLK.t0} : null};
 }
 function tmBroadcast() {
+  if (TM.vote && (gameOver || !TM.started)) tmHostVoteEnd();
   const s = tmSnap();
   for (const id of Object.keys(TM.conns)) { try { TM.conns[id].send(s); } catch (e) {} }
   tmRender();
@@ -1414,6 +1493,7 @@ function tmGuestConnect(onOpen, onFail) {
 function tmGuestData(d) {
   if (!d || typeof d.type !== 'string') return;
   if (d.type === 'reject') { tmFatal(typeof d.msg === 'string' ? d.msg.slice(0, 60) : '입장할 수 없습니다.'); return; }
+  if (d.type === 'vote') { if (TM.joined) tmOnVote(d); return; }
   if (d.type !== 'snap' || !TeamLogic.validSnap(d)) return;
   const first = !TM.joined;
   TM.joined = true; clearTimeout(TM.joinTimer);
@@ -1421,7 +1501,9 @@ function tmGuestData(d) {
   if (TM.migr) { TM.migr = null; clearInterval(TM.rejoin); TM.busy = false; }
   TM.players = d.players; TM.started = d.started; TM.turn = d.turn; TM.hostId = d.hostId;
   const r = d.result;
-  TM.result = r && typeof r === 'object' ? {winner: r.winner === 1 || r.winner === 2 ? r.winner : 0, reason: ['wipe', 'time'].includes(r.reason) ? r.reason : 'five', draw: !!r.draw, void: !!r.void} : null;
+  TM.result = r && typeof r === 'object' ? {winner: r.winner === 1 || r.winner === 2 ? r.winner : 0, reason: ['wipe', 'time', 'resign', 'agreed'].includes(r.reason) ? r.reason : 'five', draw: !!r.draw, void: !!r.void} : null;
+  TM.votes = {};
+  if (d.votes && typeof d.votes === 'object') for (const p of TM.players) if (Number.isInteger(d.votes[p.id])) TM.votes[p.id] = d.votes[p.id];
   TM.until = {};
   (Array.isArray(d.cd) ? d.cd : []).forEach(x => { if ((x.team === 1 || x.team === 2) && Number.isFinite(x.ms)) TM.until[x.team] = Date.now() + x.ms; });
   board = d.board; scores = {1: d.scores[1], 2: d.scores[2]}; gameOver = !!d.gameOver;
@@ -1438,6 +1520,7 @@ function tmGuestData(d) {
 function tmHostLost() {
   if (!TM || TM.role !== 'guest' || TM.migr) return;
   tmClearLink();
+  TM.vq = null; tmVoteRender(); // ponytail: a vote in progress dies with the host
   TM.migr = {since: Date.now()};
   clearInterval(TM.rejoin);
   TM.rejoin = setInterval(tmMigrateStep, 2000);
@@ -1476,6 +1559,7 @@ function tmRematch() {
 }
 function tmBanner() {
   if (!TM) return;
+  tmVoteRender();
   const parts = [];
   if (TM.migr) parts.push('방장 연결 끊김 — 새 방장 연결 중...');
   for (const t of [1, 2]) if (TM.until[t]) parts.push(`${t === 1 ? '흑' : '백'}팀 전원 이탈 — ${Math.max(0, Math.ceil((TM.until[t] - Date.now()) / 1000))}초 후 패배`);
@@ -1519,13 +1603,13 @@ function tmDrawStones() {
 function tmShowEnd() {
   const r = TM.result || {};
   if (r.void) return showEndOverlay('대국 무효', '양 팀 모두 연결이 끊겨 대국이 종료되었습니다.');
-  if (r.draw) return showDrawOverlay();
+  if (r.draw) return showDrawOverlay(r.reason === 'agreed' ? '합의 무승부' : '');
   const w = r.winner, mine = w === tmMyTeam();
   const stone = document.getElementById('modal-stone');
   stone.className = `modal-stone ${w === 1 ? 'black-stone' : 'white-stone'}`;
   stone.style.background = ''; stone.style.boxShadow = '';
   document.getElementById('modal-winner').textContent = `${w === 1 ? '흑' : '백'}팀 승리!` + (mine ? ' 🎉' : '');
-  document.getElementById('modal-sub').textContent = r.reason === 'time' ? (mine ? '상대 팀이 시간을 초과했습니다!' : '시간 초과로 졌습니다.') : mine ? '우리 팀이 이겼습니다!' : (r.reason === 'wipe' ? '상대 팀 전원이 이탈했습니다.' : '상대 팀이 이겼습니다.');
+  document.getElementById('modal-sub').textContent = r.reason === 'resign' ? (mine ? '상대 팀이 항복했습니다!' : '항복했습니다.') : r.reason === 'time' ? (mine ? '상대 팀이 시간을 초과했습니다!' : '시간 초과로 졌습니다.') : mine ? '우리 팀이 이겼습니다!' : (r.reason === 'wipe' ? '상대 팀 전원이 이탈했습니다.' : '상대 팀이 이겼습니다.');
   resultTitle('승리');
   showOverlay('overlay');
 }
@@ -1604,7 +1688,7 @@ function updateBadges() {
 
 // ─── BOARD ────────────────────────────────────────────────────
 function initBoard() {
-  aiHist = [];
+  aiHist = []; aiVotes = 0;
   board = Array.from({length: BOARD_SIZE}, () => Array(BOARD_SIZE).fill(0));
   lastPlaced = null; winningCells = [];
   stonesLayer.innerHTML = '';
@@ -1700,7 +1784,7 @@ function clockDraw() {
   }
 }
 function clockTick() {
-  clockDraw();
+  clockDraw(); ctlRender();
   if (!CLK || gameOver || !clockRuns(currentPlayer)) return;
   if (gameMode === 'ai' ? aiThinking : !(TM && TM.started && TM.role === 'host')) return;
   if (Date.now() - CLK.t0 >= TeamLogic.budget(CLK.rule, CLK.side[currentPlayer])) timeUp(currentPlayer);
@@ -1718,11 +1802,44 @@ function timeUp(color) {
 function isForbidden(row, col, player) {
   return player === 1 && board[row][col] === 0 && GomokuAI.forbidden(board, row, col);
 }
-function flashForbidden() {
+function flash(msg) {
   const t = document.getElementById('turn-text'), old = t.textContent;
-  t.textContent = '금수 (쌍삼 · 장목) 자리입니다';
-  announce('금수 자리입니다');
-  setTimeout(() => { if (t.textContent === '금수 (쌍삼 · 장목) 자리입니다') t.textContent = old; }, 1200);
+  t.textContent = msg; announce(msg);
+  setTimeout(() => { if (t.textContent === msg) t.textContent = old; }, 1500);
+}
+function flashForbidden() { flash('금수 (쌍삼 · 장목) 자리입니다'); }
+
+// ─── DRAW OFFER / RESIGN ──────────────────────────────────────
+// AI: the AI agrees to a draw when it has no line with 3+ stones left. Rooms: host-run vote (tmHostVote*).
+const VOTE_MAX = 2; // offers + resigns per player per game
+let VOTE_MS = 20000; // vote answer time; tests shorten it
+let aiVotes = 0;
+const noMoveLeft = () => board.length === BOARD_SIZE && TeamLogic.bestWindow(board, 1) < 0 && TeamLogic.bestWindow(board, 2) < 0;
+function ctlRender() {
+  const team = gameMode === 'team';
+  const used = team ? (TM && TM.votes[TM.me]) || 0 : aiVotes;
+  const can = used < VOTE_MAX && board.length === BOARD_SIZE && (team ? !!(TM && TM.started && !gameOver && !TM.vq) : !gameOver && !aiThinking);
+  const d = document.getElementById('btn-draw');
+  d.hidden = !(can && myTurn());
+  d.classList.toggle('hot', !d.hidden && noMoveLeft());
+  document.getElementById('btn-resign').hidden = !can;
+}
+function offerDraw() {
+  if (document.getElementById('btn-draw').hidden) return;
+  if (gameMode === 'team') return tmVoteStart('draw');
+  aiVotes++;
+  if (TeamLogic.bestWindow(board, aiPlayer) > 2) { ctlRender(); return flash('AI가 무승부를 거절했습니다'); }
+  gameOver = true; aiLearn(0); updateTurn(); ctlRender();
+  showDrawOverlay('합의 무승부 — AI가 받아들였습니다');
+}
+function resign() {
+  if (document.getElementById('btn-resign').hidden || !confirm('정말 항복할까요?')) return;
+  if (gameMode === 'team') return tmVoteStart('resign');
+  if (gameOver) return;
+  aiVotes++;
+  gameOver = true; scores[aiPlayer]++; updateScores(); aiLearn(aiPlayer); updateTurn(); ctlRender(); clockDraw();
+  showWinOverlay(aiPlayer);
+  document.getElementById('modal-sub').textContent = '항복했습니다';
 }
 function handleClick(row, col) {
   if (gameOver || aiThinking) return;
@@ -1854,6 +1971,7 @@ function updateTurn(){
     const name=currentPlayer===humanPlayer?'ZEST':aiName();
     text.textContent=isAiTurn?`${name} (AI) 차례`:`${name} 차례`;
   } else text.textContent=tmTurnText();
+  if(!gameOver&&noMoveLeft())text.textContent+=' · 더 이상 둘 수가 없습니다';
   if(document.activeElement===clickCanvas)kbShow();
   document.getElementById('card-black').classList.toggle('active',currentPlayer===1);
   document.getElementById('card-white').classList.toggle('active',currentPlayer===2);
@@ -1889,12 +2007,12 @@ function showWinOverlay(player){
   showOverlay('overlay');
 }
 
-function showDrawOverlay(){
+function showDrawOverlay(sub){
   const overlay=document.getElementById('overlay');
   document.getElementById('modal-stone').style.cssText='background:linear-gradient(135deg,#222 50%,#ccc 50%)';
   document.getElementById('modal-stone').style.boxShadow='0 4px 20px rgba(0,0,0,0.5)';
   document.getElementById('modal-winner').textContent='무승부!';
-  document.getElementById('modal-sub').textContent='보드가 가득 찼습니다';
+  document.getElementById('modal-sub').textContent=sub||'보드가 가득 찼습니다';
   resultTitle('승리');
   showOverlay('overlay');
 }
