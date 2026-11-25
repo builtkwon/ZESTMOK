@@ -737,6 +737,7 @@
   .team-col li.me { color: var(--accent-gold); font-weight: 700; }
   .team-col li.off { opacity: 0.4; }
   .team-col .btn:disabled, #team-start:disabled { opacity: 0.4; cursor: not-allowed; }
+  .panel .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
   /* a11y helpers */
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -849,6 +850,7 @@
     </div>
     <div class="conn-status" id="conn-status" style="display:none"><div class="conn-dot" id="conn-dot"></div><span id="conn-text">연결됨</span></div>
     <div class="room-status err" id="team-banner" role="status" style="text-align:center;margin:6px 0 0"></div>
+    <div class="room-status ok" id="vote-note" role="status" style="text-align:center;margin:6px 0 0"></div>
     <div class="room-status" id="vote-box" role="status" style="text-align:center;margin:6px 0 0" hidden><span id="vote-text"></span>
       <span id="vote-btns"> <button type="button" class="level-chip" onclick="tmVoteReply(true)">동의</button> <button type="button" class="level-chip" onclick="tmVoteReply(false)">거절</button></span></div>
     <div class="ai-thinking" id="ai-thinking"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div><span style="margin-left:6px">AI 생각 중...</span></div>
@@ -1366,10 +1368,10 @@ function tmVoteReply(ok) {
 }
 function tmHostVoteStart(id, kind) {
   const p = TM.players.find(x => x.id === id);
-  if (!p || !TM.started || gameOver || TM.vote || (kind !== 'draw' && kind !== 'resign') || (TM.votes[id] || 0) >= VOTE_MAX) return;
-  if (kind === 'draw' && TM.turn.team !== p.team) return;
-  TM.votes[id] = (TM.votes[id] || 0) + 1;
-  TM.vote = {kind, from: id, ask: TeamLogic.voteAsk(TM.players, kind, id), yes: [], until: Date.now() + VOTE_MS, timer: setTimeout(() => tmHostVoteEnd(), VOTE_MS)};
+  if (!p || !TM.started || gameOver || TM.vote || (kind !== 'draw' && kind !== 'resign')) return;
+  if (kind === 'draw' && (TM.turn.team !== p.team || (TM.votes[id] || 0) >= VOTE_MAX)) return;
+  if (kind === 'draw') TM.votes[id] = (TM.votes[id] || 0) + 1;
+  TM.vote = {kind, from: id, ask: TeamLogic.voteAsk(TM.players, kind, id), yes: [], until: Date.now() + VOTE_MS, timer: setTimeout(() => tmHostVoteEnd(false, 'timeout'), VOTE_MS)};
   tmBroadcast(); // carries the new vote count
   tmHostVoteStep();
 }
@@ -1379,23 +1381,23 @@ function tmHostVoteStep() {
   if (!v) return;
   const on = (id) => TM.players.some(p => p.id === id && p.online), me = TM.players.find(p => p.id === v.from);
   v.ask = v.ask.filter(on); v.yes = v.yes.filter(on);
-  if (!on(v.from)) return tmHostVoteEnd();
-  if (v.kind === 'draw' && !v.ask.some(id => TM.players.find(p => p.id === id).team !== me.team)) return tmHostVoteEnd(); // never a draw without the other side
+  if (!on(v.from)) return tmHostVoteEnd(false, 'left');
+  if (v.kind === 'draw' && !v.ask.some(id => TM.players.find(p => p.id === id).team !== me.team)) return tmHostVoteEnd(false, 'left'); // never a draw without the other side
   if (v.ask.every(id => v.yes.includes(id))) return tmHostVoteEnd(true);
   tmVoteSend({type: 'vote', kind: v.kind, from: v.from, ask: v.ask, yes: v.yes, ends: Math.max(0, v.until - Date.now())});
 }
 function tmHostVoteReply(id, ok) {
   const v = TM.vote;
   if (!v || !v.ask.includes(id) || v.yes.includes(id)) return;
-  if (!ok) return tmHostVoteEnd();
+  if (!ok) return tmHostVoteEnd(false, 'refused', id);
   v.yes.push(id); tmHostVoteStep();
 }
-// passed = apply the result; otherwise just cancel (refusal, timeout, game end, proposer gone)
-function tmHostVoteEnd(passed) {
+// passed = apply the result; otherwise cancel. why: 'refused' (by = who) | 'timeout' | 'left' | none (game ended)
+function tmHostVoteEnd(passed, why, by) {
   const v = TM.vote;
   if (!v) return;
   clearTimeout(v.timer); TM.vote = null;
-  tmVoteSend({type: 'vote', kind: v.kind, from: v.from, cancelled: true});
+  tmVoteSend({type: 'vote', kind: v.kind, from: v.from, cancelled: true, why, by});
   if (!passed || !TM.started || gameOver) return;
   const p = TM.players.find(x => x.id === v.from);
   gameOver = true;
@@ -1413,6 +1415,12 @@ function tmOnVote(d) {
   TM.vq = d.cancelled || (d.kind !== 'draw' && d.kind !== 'resign') || typeof d.from !== 'string' ? null
     : {kind: d.kind, from: d.from, ask: ids(d.ask), yes: ids(d.yes), until: Date.now() + (Number.isFinite(d.ends) ? Math.min(d.ends, 60000) : 0)};
   document.getElementById('vote-btns').hidden = !(TM.vq && TM.vq.ask.includes(TM.me) && !TM.vq.yes.includes(TM.me));
+  if (d.cancelled && !gameOver) {
+    const what = d.kind === 'draw' ? '무승부 제안' : '항복', name = (TM.players.find(p => p.id === d.by) || {}).name || '누군가';
+    if (d.why === 'refused') note(`${name}님이 ${what}을 거절했습니다 — 게임이 계속됩니다!`);
+    else if (d.why === 'timeout') note(`응답이 없어 ${what}이 취소되었습니다 — 게임이 계속됩니다!`);
+    else if (d.why === 'left') note(`참가자가 나가 ${what}이 취소되었습니다 — 게임이 계속됩니다!`);
+  }
   tmVoteRender(); ctlRender();
 }
 function tmVoteRender() {
@@ -1688,7 +1696,7 @@ function updateBadges() {
 
 // ─── BOARD ────────────────────────────────────────────────────
 function initBoard() {
-  aiHist = []; aiVotes = 0;
+  aiHist = []; aiVotes = 0; document.getElementById('vote-note').textContent = '';
   board = Array.from({length: BOARD_SIZE}, () => Array(BOARD_SIZE).fill(0));
   lastPlaced = null; winningCells = [];
   stonesLayer.innerHTML = '';
@@ -1811,32 +1819,41 @@ function flashForbidden() { flash('금수 (쌍삼 · 장목) 자리입니다'); 
 
 // ─── DRAW OFFER / RESIGN ──────────────────────────────────────
 // AI: the AI agrees to a draw when it has no line with 3+ stones left. Rooms: host-run vote (tmHostVote*).
-const VOTE_MAX = 2; // offers + resigns per player per game
+const VOTE_MAX = 2; // draw offers per player per game (resign is not counted)
 let VOTE_MS = 20000; // vote answer time; tests shorten it
 let aiVotes = 0;
 const noMoveLeft = () => board.length === BOARD_SIZE && TeamLogic.bestWindow(board, 1) < 0 && TeamLogic.bestWindow(board, 2) < 0;
 function ctlRender() {
   const team = gameMode === 'team';
   const used = team ? (TM && TM.votes[TM.me]) || 0 : aiVotes;
-  const can = used < VOTE_MAX && board.length === BOARD_SIZE && (team ? !!(TM && TM.started && !gameOver && !TM.vq) : !gameOver && !aiThinking);
-  const d = document.getElementById('btn-draw');
-  d.hidden = !(can && myTurn());
-  d.classList.toggle('hot', !d.hidden && noMoveLeft());
-  document.getElementById('btn-resign').hidden = !can;
+  const live = board.length === BOARD_SIZE && (team ? !!(TM && TM.started && !gameOver) : !gameOver);
+  const busy = team ? !!(TM && TM.vq) : aiThinking; // vote running / AI thinking: wait, don't hide
+  const d = document.getElementById('btn-draw'), r = document.getElementById('btn-resign');
+  d.hidden = !(live && myTurn());
+  d.disabled = busy || used >= VOTE_MAX;
+  d.title = used >= VOTE_MAX ? '이번 판의 무승부 제안 기회를 모두 썼습니다' : '';
+  d.classList.toggle('hot', !d.hidden && !d.disabled && noMoveLeft());
+  r.hidden = !live; r.disabled = busy;
 }
+// short message under the board (vote refused / cancelled)
+function note(msg) {
+  const el = document.getElementById('vote-note');
+  el.textContent = msg; clearTimeout(note.t);
+  note.t = setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
+}
+const ctlOff = (id) => { const b = document.getElementById(id); return b.hidden || b.disabled; };
 function offerDraw() {
-  if (document.getElementById('btn-draw').hidden) return;
+  if (ctlOff('btn-draw')) return;
   if (gameMode === 'team') return tmVoteStart('draw');
   aiVotes++;
-  if (TeamLogic.bestWindow(board, aiPlayer) > 2) { ctlRender(); return flash('AI가 무승부를 거절했습니다'); }
+  if (TeamLogic.bestWindow(board, aiPlayer) > 2) { ctlRender(); return note('AI가 무승부를 거절했습니다 — 게임이 계속됩니다!'); }
   gameOver = true; aiLearn(0); updateTurn(); ctlRender();
   showDrawOverlay('합의 무승부 — AI가 받아들였습니다');
 }
 function resign() {
-  if (document.getElementById('btn-resign').hidden || !confirm('정말 항복할까요?')) return;
+  if (ctlOff('btn-resign') || !confirm('정말 항복할까요?')) return;
   if (gameMode === 'team') return tmVoteStart('resign');
   if (gameOver) return;
-  aiVotes++;
   gameOver = true; scores[aiPlayer]++; updateScores(); aiLearn(aiPlayer); updateTurn(); ctlRender(); clockDraw();
   showWinOverlay(aiPlayer);
   document.getElementById('modal-sub').textContent = '항복했습니다';

@@ -111,11 +111,12 @@ try {
   await Vy.evaluate(() => tmVoteReply(true)); await prog(V, '동의 2/4');
   await Vz.evaluate(() => tmVoteReply(false)); await noVote(V);
   ok('one opponent refuses -> cancelled, game goes on', await Vw.evaluate(() => !gameOver && TM.started));
+  ok('proposer told who refused', await Vh.waitForFunction(() => document.getElementById('vote-note').textContent === 'Vz님이 무승부 제안을 거절했습니다 — 게임이 계속됩니다!', null, W).then(() => true, () => false));
   // 3) no answer within the (shortened) time: cancelled; that was the 2nd vote -> no more buttons
   await Vh.evaluate(() => { VOTE_MS = 1500; }); await Vh.waitForFunction(() => !document.getElementById('btn-draw').hidden, null, W);
   await Vh.evaluate(() => offerDraw()); await asked(Vy); await noVote(V);
-  ok('vote timeout -> cancelled', await Vh.evaluate(() => !gameOver));
-  ok('2 votes used -> buttons hidden', await Vh.waitForFunction(() => document.getElementById('btn-draw').hidden && document.getElementById('btn-resign').hidden, null, W).then(() => true));
+  ok('vote timeout -> cancelled + notice', await Vh.evaluate(() => !gameOver && document.getElementById('vote-note').textContent.startsWith('응답이 없어')));
+  ok('2 draws used -> draw disabled (still shown), resign still usable', await Vh.waitForFunction(() => { const d = document.getElementById('btn-draw'), r = document.getElementById('btn-resign'); return !d.hidden && d.disabled && !r.hidden && !r.disabled; }, null, W).then(() => true, () => false));
   ok('guest sees host-side count', await Vy.waitForFunction(() => TM.votes[TM.players[0].id] === 2, null, W).then(() => true, () => false));
   // 4) resign asks only own teammates: Vy resigns, host Vh agrees (1/2 -> pass) -> white wins
   await Vh.evaluate(() => { VOTE_MS = 20000; });
