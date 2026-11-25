@@ -6,7 +6,7 @@ const ok=(n,c)=>{console.log(c?'PASS':'FAIL',n);if(!c)process.exitCode=1;};
 for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobile',{...devices['iPhone 13']}]]) {
   const ctx=await b.newContext(opts); const p=await ctx.newPage(); const errs=[],bad=[];
   p.on('pageerror',e=>errs.push(e.message)); p.on('response',r=>{if(r.status()>=400)bad.push(r.url())}); p.on('requestfailed',r=>bad.push(r.url()));
-  const dialogs=[]; p.on('dialog',d=>{dialogs.push(d.message());d.dismiss()});
+  const dialogs=[]; p.on('dialog',d=>{dialogs.push(d.message());d.message().includes('항복')?d.accept():d.dismiss()});
   await p.goto(url); await p.waitForTimeout(300);
   ok(name+' no external requests/failures', bad.length===0 && true); if(bad.length)console.log(bad);
   ok(name+' mode overlay focused', await p.evaluate(()=>document.activeElement.classList.contains('mode-card')));
@@ -49,6 +49,24 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   ok(name+' 5분 clock', /⏱ [45]:\d\d/.test(await p.textContent('#clock-1')));
   await p.evaluate(()=>{CLK.t0-=300500;}); await p.waitForTimeout(300);
   ok(name+' main time used up -> 초읽기', /초읽기 \d+초 · 3회/.test(await p.textContent('#clock-1')) && await p.evaluate(()=>!gameOver));
+  // draw offer / resign vs AI (board set up directly)
+  const vis=(id)=>p.evaluate(id=>!document.getElementById(id).hidden,id);
+  await p.evaluate(()=>{closeOverlay();gameOver=true;selectColor(1);}); await p.waitForTimeout(300);
+  ok(name+' draw + resign buttons on my turn', await vis('btn-draw') && await vis('btn-resign'));
+  await p.evaluate(()=>{board[7][7]=board[7][8]=board[7][9]=2;board[3][3]=1;refreshStones();updateTurn();});
+  await p.click('#btn-draw'); await p.waitForTimeout(200);
+  ok(name+' AI refuses draw (has 3 in an open line)', await p.evaluate(()=>!gameOver&&document.getElementById('turn-text').textContent.includes('거절')));
+  await p.click('#btn-draw'); await p.waitForTimeout(200);
+  ok(name+' 2 offers per game, then buttons hidden', !(await vis('btn-draw')) && !(await vis('btn-resign')));
+  await p.evaluate(()=>{selectColor(1);board=board.map((r,i)=>r.map((_,j)=>((i>>1)+j)%2+1));board[7][7]=board[0][0]=0;refreshStones();updateTurn();}); await p.waitForTimeout(300);
+  ok(name+' no-move notice, game goes on', await p.evaluate(()=>!gameOver&&document.getElementById('turn-text').textContent.includes('더 이상 둘 수가 없습니다')));
+  ok(name+' draw button highlighted', await p.evaluate(()=>document.getElementById('btn-draw').classList.contains('hot')));
+  await p.click('#btn-draw'); await p.waitForTimeout(300);
+  ok(name+' AI accepts draw (no line left)', await p.evaluate(()=>gameOver&&document.getElementById('modal-winner').textContent==='무승부!'&&document.getElementById('modal-sub').textContent.includes('합의 무승부')));
+  await p.evaluate(()=>{closeOverlay();selectColor(1);scores={1:0,2:0};aiHist=[{p:1,row:7,col:7,key:GomokuAI.posKey(board,1)}];board[7][7]=1;refreshStones();const L=GomokuAI.learn;GomokuAI.learn=(h,ai,w)=>{window.learned=[ai,w];return L(h,ai,w)};}); await p.waitForTimeout(200);
+  await p.click('#btn-resign'); await p.waitForTimeout(300);
+  ok(name+' resign: confirm, AI wins', dialogs.some(m=>m==='정말 항복할까요?') && await p.evaluate(()=>gameOver&&scores[2]===1&&document.getElementById('modal-sub').textContent==='항복했습니다'&&String(window.learned)==='2,2'));
+  await p.evaluate(()=>closeOverlay());
   const fonts=await p.evaluate(()=>getComputedStyle(document.body).fontFamily); 
   ok(name+' no page errors '+JSON.stringify(errs), errs.length===0);
   await ctx.close();

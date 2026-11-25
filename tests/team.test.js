@@ -79,4 +79,32 @@ assert.strictEqual(T.cleanName(null), '');
   assert.deepStrictEqual(T.view(B5, T.clockInit(B5), 1200), { byo: 3800, per: 0 });
   assert(T.validClock(c) && !T.validClock({ main: 1, per: 9 }));
 }
+// bestWindow: most own stones in any 5-cell line with no opponent stone (-1 = none left)
+{
+  const B = () => Array.from({ length: 15 }, () => Array(15).fill(0));
+  assert.strictEqual(T.bestWindow(B(), 1), 0, 'empty board');
+  const full = B().map((r, i) => r.map((_, j) => ((i >> 1) + j) % 2 + 1)); // 2x1 blocks: no 5 in a row anywhere
+  assert.strictEqual(T.bestWindow(full, 1), -1, 'full board');
+  assert.strictEqual(T.bestWindow(full, 2), -1);
+  const g = full.map(r => r.slice()); g[7][7] = g[0][0] = 0; // empty cells left, still no open line for either side
+  assert.strictEqual(T.bestWindow(g, 1), -1, 'blocked board with empty cells (black)');
+  assert.strictEqual(T.bestWindow(g, 2), -1, 'blocked board with empty cells (white)');
+  const one = B().map(r => r.map(() => 2)); one[0][0] = 0; one[0][1] = 1; // white owns all, a black stone blocks some
+  assert.strictEqual(T.bestWindow(one, 1), -1, 'black blocked everywhere');
+  assert.strictEqual(T.bestWindow(one, 2), 5, 'white still has open lines');
+  const s = B(); s[7][7] = s[7][8] = s[7][9] = 1; s[7][10] = 2;
+  assert.strictEqual(T.bestWindow(s, 1), 3);
+  assert.strictEqual(T.bestWindow(s, 2), 1);
+}
+// voteAsk: who must agree; online only, proposer excluded
+{
+  const ps = [P('a', 1), P('b', 2), P('c', 1), P('d', 2), P('e', 1, false), P('f', 2, false)];
+  assert.deepStrictEqual(T.voteAsk(ps, 'draw', 'a'), ['b', 'c', 'd'], 'draw: everyone online but the proposer, both teams');
+  assert.deepStrictEqual(T.voteAsk(ps, 'resign', 'a'), ['c'], 'resign: online teammates only (offline e excluded)');
+  assert.deepStrictEqual(T.voteAsk(ps, 'resign', 'b'), ['d'], 'offline f excluded');
+  const solo = [P('a', 1), P('b', 2), P('c', 2)];
+  assert.deepStrictEqual(T.voteAsk(solo, 'resign', 'a'), [], 'solo team: nobody to ask');
+  assert.deepStrictEqual(T.voteAsk(solo, 'draw', 'a'), ['b', 'c']);
+  assert.deepStrictEqual(T.voteAsk(ps, 'draw', 'zz'), [], 'unknown proposer');
+}
 console.log('team tests passed');

@@ -78,7 +78,29 @@
   }
   const validClock = (c) => !!c && Number.isFinite(c.main) && c.main >= 0 && Number.isInteger(c.per) && c.per >= 0 && c.per <= BYO_N;
 
-  const api = { MAX_PLAYERS, MAX_TEAM, WIPE_MS, mover, advance, wiped, canPick, canStart, autoTeam, successor, cleanName, validMove, validSnap, BYO_MS, BYO_N, validRule, clockInit, budget, spend, view, validClock };
+  // ── no-move check / votes ──
+  // Most of p's stones in any 5-cell line holding no opponent stone; -1 = p can never make five.
+  // ponytail: ignores black's forbidden moves (necessary condition only)
+  function bestWindow(board, p) {
+    let best = -1;
+    for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [1, -1]])
+      for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+        const er = r + 4 * dr, ec = c + 4 * dc;
+        if (er >= N || ec < 0 || ec >= N) continue;
+        let k = 0, open = true;
+        for (let i = 0; i < 5 && open; i++) { const v = board[r + i * dr][c + i * dc]; if (v === p) k++; else if (v) open = false; }
+        if (open && k > best) best = k;
+      }
+    return best;
+  }
+  // Who must agree (online only, proposer excluded): draw = everyone else, resign = own teammates.
+  function voteAsk(players, kind, fromId) {
+    const me = players.find(p => p.id === fromId);
+    if (!me) return [];
+    return players.filter(p => p.online && p.id !== fromId && (kind === 'draw' || p.team === me.team)).map(p => p.id);
+  }
+
+  const api = { MAX_PLAYERS, MAX_TEAM, WIPE_MS, mover, advance, wiped, canPick, canStart, autoTeam, successor, cleanName, validMove, validSnap, BYO_MS, BYO_N, validRule, clockInit, budget, spend, view, validClock, bestWindow, voteAsk };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TeamLogic = api;
 })(typeof window !== 'undefined' ? window : globalThis);
