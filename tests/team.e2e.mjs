@@ -57,10 +57,10 @@ try {
   ok('state preserved after migration', await C.evaluate(() => board.flat().filter(Boolean).length === 6 && TM.started));
   // new host can still run the game: whoever is to move plays
   const p2 = await mv(10, 10); await A.waitForFunction(() => board[10][10] !== 0, null, W); ok('moves work under new host', true);
-  // white team (Cat only) leaves: 10s countdown, then black wins
+  // white team (Cat only) leaves: 30s countdown, then black wins
   await C.ctx.close();
   await A.waitForFunction(() => /초 후 패배/.test(document.getElementById('team-banner').textContent), null, W); ok('countdown shown', true);
-  await A.waitForFunction(() => gameOver && TM.result && TM.result.winner === 1, null, { timeout: 20000 }); ok('wiped team loses', true);
+  await A.waitForFunction(() => gameOver && TM.result && TM.result.winner === 1, null, { timeout: 45000 }); ok('wiped team loses', true);
   ok('win overlay names team', await A.waitForFunction(() => document.getElementById('modal-winner').textContent.includes('흑팀 승리'), null, W).then(() => true));
   ok('no page errors', A.errs.length + H.errs.length + B.errs.length + C.errs.length === 0);
   // 1:1 blitz room (5s): host picks it, guest gets the rule; nobody moves -> black loses on time
