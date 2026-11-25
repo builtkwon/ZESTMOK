@@ -1,7 +1,7 @@
 // Room (PvP) + time control: pure logic (no DOM, no network). Tested in tests/team.test.js
 // players: [{id, name, team: 1|2, online}] in join order. turn: {team: 1|2, n: {1: k, 2: k}}
 (function (root) {
-  const MAX_PLAYERS = 4, MAX_TEAM = 3, WIPE_MS = 10000, N = 15;
+  const MAX_PLAYERS = 4, MAX_TEAM = 3, WIPE_MS = 30000, N = 15;
   const members = (ps, t) => ps.filter(p => p.team === t && p.online);
 
   // Who moves now: the team alternates; inside a team, online members rotate.
