@@ -759,19 +759,28 @@
   /* `transition: all` on children would animate inherited visibility and block focus for 0.2s */
   .overlay *, .select-overlay *, .mode-overlay *, .room-overlay * { transition-property: background, color, border-color, box-shadow, transform, opacity; }
 
+  .actions { display: contents; } /* desktop: buttons stay in the panel column */
+
   /* Mobile / narrow: stack layout, drop mirror panel */
   @media (max-width: 900px) {
     body { justify-content: flex-start; }
     h1 { font-size: 2rem; }
     header { margin-bottom: 10px; }
     .game-layout { flex-direction: column; align-items: center; gap: 12px; width: 100%; }
-    .panel { width: 100%; max-width: 480px; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; }
+    /* panel: players stacked on the left, score + reset on the right, action buttons below */
+    .panel { width: 100%; max-width: 480px; display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "b s" "w r" "a a"; align-items: center; gap: 8px; padding: 10px 12px; }
+    #card-black { grid-area: b; } #card-white { grid-area: w; } .panel .score-section { grid-area: s; } #btn-reset { grid-area: r; }
+    .actions { grid-area: a; display: flex; gap: 8px; }
+    .actions .btn { letter-spacing: 0; white-space: nowrap; font-size: 0.85rem; padding: 8px 4px; }
+    h1 span { letter-spacing: 0.12em; font-size: 0.85rem; }
+    .player-label { display: none; }
+    .player-name { white-space: normal; overflow-wrap: anywhere; }
+    .player-name .player-badge { white-space: nowrap; letter-spacing: 0; }
     .panel:last-child { display: none; }
     .panel .divider { display: none; }
-    .panel .btn { width: auto; flex: 1 1 40%; padding: 8px; }
-    .player-card { padding: 8px; flex: 1 1 0; min-width: 0; }
+    .panel .btn { width: auto; flex: 1 1 0; padding: 8px; }
+    .player-card { padding: 8px 22px 8px 8px; min-width: 0; }
     .player-name { font-size: 0.9rem; }
-    .player-label { letter-spacing: 0; font-size: 0.62rem; }
     .score-section { flex: 0 0 auto; }
     .panel .btn { min-width: 0; }
     .board-wrap { padding: 12px; }
@@ -786,7 +795,7 @@
 <body>
 
 <header>
-  <h1>ZESTMOK<span>오목 · GOMOKU</span></h1>
+  <h1>ZESTMOK<span>오목 · made by builtkwon</span></h1>
 </header>
 
 <div class="game-layout">
@@ -829,10 +838,12 @@
 
     <div class="divider"></div>
 
-    <button class="btn" onclick="newGame()">새 게임</button>
-    <button class="btn" id="btn-draw" onclick="offerDraw()" hidden>무승부 제안</button>
-    <button class="btn secondary" id="btn-resign" onclick="resign()" hidden>항복</button>
-    <button class="btn secondary" onclick="resetScore()">전적 초기화</button>
+    <div class="actions">
+      <button class="btn" onclick="newGame()">새 게임</button>
+      <button class="btn" id="btn-draw" onclick="offerDraw()" hidden>무승부 제안</button>
+      <button class="btn secondary" id="btn-resign" onclick="resign()" hidden>항복</button>
+    </div>
+    <button class="btn secondary" id="btn-reset" onclick="resetScore()">전적 초기화</button>
   </div>
 
   <!-- Board -->
