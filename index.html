@@ -1727,7 +1727,7 @@ function drawBoard() {
   const stars = [[3,3],[3,11],[7,7],[11,3],[11,11]];
   ctx.fillStyle = '#5c3f18';
   for (const [r,c] of stars) { ctx.beginPath(); ctx.arc(MARGIN+c*CELL, MARGIN+r*CELL, 4, 0, Math.PI*2); ctx.fill(); }
-  ctx.fillStyle = 'rgba(90,60,20,0.7)';
+  ctx.fillStyle = 'rgba(80,52,16,0.9)';
   ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
   const cols = 'ABCDEFGHJKLMNOP';
   for (let i = 0; i < BOARD_SIZE; i++) {
