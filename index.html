@@ -760,6 +760,15 @@
   .overlay *, .select-overlay *, .mode-overlay *, .room-overlay * { transition-property: background, color, border-color, box-shadow, transform, opacity; }
 
   .actions { display: contents; } /* desktop: buttons stay in the panel column */
+  .actions[hidden] { display: none; } /* a room vote replaces the buttons */
+  /* room vote: takes the action buttons' place in the panel (never over or under the board) */
+  .vote-box { border: 1px solid var(--accent-gold); border-radius: 6px; padding: 8px; text-align: center; font-size: 0.8rem; line-height: 1.5; color: var(--text-primary); background: rgba(212,168,67,0.08); }
+  .vote-box[hidden] { display: none; }
+  .vote-btns { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
+  .vote-btns[hidden] { display: none; }
+  .vote-btns .level-chip { flex: 1 1 0; padding: 6px 8px; }
+  .vote-note { font-size: 0.78rem; text-align: center; color: #6dcc8a; }
+  .vote-note:empty { display: none; }
 
   /* Mobile / narrow: stack layout, drop mirror panel */
   @media (max-width: 900px) {
@@ -771,6 +780,8 @@
     .panel { width: 100%; max-width: 480px; display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "b s" "w r" "a a"; align-items: center; gap: 8px; padding: 10px 12px; }
     #card-black { grid-area: b; } #card-white { grid-area: w; } .panel .score-section { grid-area: s; } #btn-reset { grid-area: r; }
     .actions { grid-area: a; display: flex; gap: 8px; }
+    .vote-box { grid-area: a; }
+    .vote-note { grid-column: 1 / -1; }
     .actions .btn { letter-spacing: 0; white-space: nowrap; font-size: 0.85rem; padding: 8px 4px; }
     h1 span { letter-spacing: 0.12em; font-size: 0.85rem; }
     .player-label { display: none; }
@@ -840,9 +851,12 @@
 
     <div class="actions">
       <button class="btn" onclick="newGame()">새 게임</button>
-      <button class="btn" id="btn-draw" onclick="offerDraw()" hidden>무승부 제안</button>
-      <button class="btn secondary" id="btn-resign" onclick="resign()" hidden>항복</button>
+      <button class="btn" id="btn-draw" onclick="offerDraw()" disabled>무승부 제안</button>
+      <button class="btn secondary" id="btn-resign" onclick="resign()" disabled>항복</button>
     </div>
+    <div class="vote-box" id="vote-box" role="status" hidden><span id="vote-text"></span>
+      <span class="vote-btns" id="vote-btns"><button type="button" class="level-chip" onclick="tmVoteReply(true)">동의</button><button type="button" class="level-chip" onclick="tmVoteReply(false)">거절</button></span></div>
+    <div class="vote-note" id="vote-note" role="status"></div>
     <button class="btn secondary" id="btn-reset" onclick="resetScore()">전적 초기화</button>
   </div>
 
@@ -861,9 +875,6 @@
     </div>
     <div class="conn-status" id="conn-status" style="display:none"><div class="conn-dot" id="conn-dot"></div><span id="conn-text">연결됨</span></div>
     <div class="room-status err" id="team-banner" role="status" style="text-align:center;margin:6px 0 0"></div>
-    <div class="room-status ok" id="vote-note" role="status" style="text-align:center;margin:6px 0 0"></div>
-    <div class="room-status" id="vote-box" role="status" style="text-align:center;margin:6px 0 0" hidden><span id="vote-text"></span>
-      <span id="vote-btns"> <button type="button" class="level-chip" onclick="tmVoteReply(true)">동의</button> <button type="button" class="level-chip" onclick="tmVoteReply(false)">거절</button></span></div>
     <div class="ai-thinking" id="ai-thinking"><div class="ai-dot"></div><div class="ai-dot"></div><div class="ai-dot"></div><span style="margin-left:6px">AI 생각 중...</span></div>
   </div>
 
@@ -1220,7 +1231,7 @@ function tmLeave() {
   const t = TM; tmClearLink(); TM = null;
   clearInterval(t.hb); clearInterval(t.tick); clearInterval(t.rejoin); clearTimeout(t.retry); clearTimeout(t.prune);
   Object.values(t.wipe).forEach(clearTimeout); if (t.vote) clearTimeout(t.vote.timer);
-  document.getElementById('team-banner').textContent = ''; document.getElementById('vote-box').hidden = true;
+  document.getElementById('team-banner').textContent = ''; tmVoteRender();
   document.getElementById('conn-status').style.display = 'none';
   clockStop();
 }
@@ -1380,7 +1391,7 @@ function tmVoteReply(ok) {
 function tmHostVoteStart(id, kind) {
   const p = TM.players.find(x => x.id === id);
   if (!p || !TM.started || gameOver || TM.vote || (kind !== 'draw' && kind !== 'resign')) return;
-  if (kind === 'draw' && (TM.turn.team !== p.team || (TM.votes[id] || 0) >= VOTE_MAX)) return;
+  if (kind === 'draw' && (TM.votes[id] || 0) >= VOTE_MAX) return; // any turn
   if (kind === 'draw') TM.votes[id] = (TM.votes[id] || 0) + 1;
   TM.vote = {kind, from: id, ask: TeamLogic.voteAsk(TM.players, kind, id), yes: [], until: Date.now() + VOTE_MS, timer: setTimeout(() => tmHostVoteEnd(false, 'timeout'), VOTE_MS)};
   tmBroadcast(); // carries the new vote count
@@ -1436,10 +1447,12 @@ function tmOnVote(d) {
 }
 function tmVoteRender() {
   const q = TM && TM.vq, box = document.getElementById('vote-box');
-  box.hidden = !q;
+  box.hidden = !q; document.querySelector('.actions').hidden = !!q;
   if (!q) return;
   const who = (TM.players.find(p => p.id === q.from) || {}).name || '?';
-  document.getElementById('vote-text').textContent = `${who}: ${q.kind === 'draw' ? '무승부 제안' : '항복 제안'} — 동의 ${q.yes.length + 1}/${q.ask.length + 1} · ${Math.max(0, Math.ceil((q.until - Date.now()) / 1000))}초`;
+  const t = document.getElementById('vote-text'), n = document.createElement('span'); // count kept on one line
+  n.style.whiteSpace = 'nowrap'; n.textContent = `동의 ${q.yes.length + 1}/${q.ask.length + 1} (${Math.max(0, Math.ceil((q.until - Date.now()) / 1000))}초)`;
+  t.replaceChildren(`${who}님의 ${q.kind === 'draw' ? '무승부 제안' : '항복 제안'} · `, n);
 }
 
 function tmSnap() {
@@ -1838,13 +1851,14 @@ function ctlRender() {
   const team = gameMode === 'team';
   const used = team ? (TM && TM.votes[TM.me]) || 0 : aiVotes;
   const live = board.length === BOARD_SIZE && (team ? !!(TM && TM.started && !gameOver) : !gameOver);
-  const busy = team ? !!(TM && TM.vq) : aiThinking; // vote running / AI thinking: wait, don't hide
+  const busy = team ? !!(TM && TM.vq) : aiThinking;
+  const why = !live ? '진행 중인 대국이 없습니다' : busy ? (team ? '투표가 진행 중입니다' : 'AI가 생각 중입니다') : '';
   const d = document.getElementById('btn-draw'), r = document.getElementById('btn-resign');
-  d.hidden = !(live && myTurn());
-  d.disabled = busy || used >= VOTE_MAX;
-  d.title = used >= VOTE_MAX ? '이번 판의 무승부 제안 기회를 모두 썼습니다' : '';
-  d.classList.toggle('hot', !d.hidden && !d.disabled && noMoveLeft());
-  r.hidden = !live; r.disabled = busy;
+  // always shown; disabled with the reason as a tooltip
+  d.disabled = !!why || used >= VOTE_MAX;
+  d.title = why || (used >= VOTE_MAX ? '이번 판의 무승부 제안 기회를 모두 썼습니다' : '');
+  d.classList.toggle('hot', !d.disabled && noMoveLeft());
+  r.disabled = !!why; r.title = why;
 }
 // short message under the board (vote refused / cancelled)
 function note(msg) {
@@ -1852,7 +1866,7 @@ function note(msg) {
   el.textContent = msg; clearTimeout(note.t);
   note.t = setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 4000);
 }
-const ctlOff = (id) => { const b = document.getElementById(id); return b.hidden || b.disabled; };
+const ctlOff = (id) => document.getElementById(id).disabled;
 function offerDraw() {
   if (ctlOff('btn-draw')) return;
   if (gameMode === 'team') return tmVoteStart('draw');
