@@ -1,13 +1,13 @@
 # 팀전 설계 (v3, 구현 완료) → 현재 이름 "방 만들기"
 
 > 2026-11 변경: 이름이 **방 만들기**로 바뀌고 기존 1:1 온라인 모드는 삭제됨(1:1도 이 방에서). 모드 선택 다음에 [일반전 / 속기전] 단계가 추가됨 — 방장이 정한 시간 규칙(`TM.rule`)을 참가자도 따르고, 시계(`clock: {side, used}`)는 스냅샷에 실려 가며 시간 초과는 방장이 판정(`result.reason = 'time'`). 시계 규칙은 `team.js`의 `spend`/`budget`/`view`.
-> 2026-11 추가: **무승부 제안 · 항복 투표** (방장이 진행·검증). 한 판에 한 사람당 제안+항복 합쳐 2번(`snap.votes {id: n}`, 방장 승계 후에도 유지).
+> 2026-11 추가: **무승부 제안 · 항복 투표** (방장이 진행·검증). 무승부 제안은 한 판에 한 사람당 2번(`snap.votes {id: n}`, 방장 승계 후에도 유지, 다 쓰면 버튼 비활성), 항복은 횟수 제한 없음.
 > | 방향 | 메시지 | 방장 검증 |
 > |---|---|---|
-> | G→H | `{type:'vote-start', kind:'draw'\|'resign'}` | 대국 중, 진행 중 투표 없음, 남은 횟수 있음; 무승부는 보낸 사람 팀 차례일 때만 |
+> | G→H | `{type:'vote-start', kind:'draw'\|'resign'}` | 대국 중, 진행 중 투표 없음; 무승부는 보낸 사람 팀 차례 + 남은 횟수 있을 때만 |
 > | H→G | `{type:'vote', kind, from, ask:[ids], yes:[ids], ends}` | `ask`는 시작 때 한 번 고정(`TeamLogic.voteAsk`): 무승부 = 제안자 뺀 접속자 전원(양 팀), 항복 = 제안자의 접속 중 팀원. `ask` 중 `yes`에 없는 사람에게만 동의/거절 버튼. `ends` = 남은 ms. 모두에게 "동의 (yes+1)/(ask+1)" 표시(제안자는 동의로 셈) |
 > | G→H | `{type:'vote-reply', ok}` | `ask`에 있고 아직 답 안 한 id만 유효; 거절 1번이면 취소 |
-> | H→G | `{type:'vote', kind, from, cancelled:true}` | 거절, 20초 무응답, 대국 종료(성립 포함) 시 |
+> | H→G | `{type:'vote', kind, from, cancelled:true, why, by}` | `why`: `refused`(by = 거절한 id) / `timeout` / `left`(제안자·상대 팀 이탈) / 없음(대국 종료, 성립 포함). 모두에게 판 아래 알림 "… — 게임이 계속됩니다!" |
 > - `ask` 전원이 `yes`면 방장이 종료: 항복 = `result {winner, reason:'resign'}`, 무승부 = `{draw:true, reason:'agreed'}` (게스트 sanitizer 허용 reason: `wipe, time, resign, agreed`).
 > - 투표 중 끊긴 사람은 `ask`에서 빠짐. 제안자가 끊기거나, 무승부인데 상대 팀 응답자가 모두 끊기면 취소(상대 동의 없는 무승부 방지). 혼자인 팀의 항복은 `ask = []` → 확인 창 후 바로 패배. 방장 승계 시 진행 중 투표는 사라짐.
 > - "더 이상 둘 수가 없습니다" 안내는 각자 스냅샷 판으로 `TeamLogic.bestWindow`를 계산(메시지 추가 없음).

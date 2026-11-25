@@ -55,9 +55,9 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   ok(name+' draw + resign buttons on my turn', await vis('btn-draw') && await vis('btn-resign'));
   await p.evaluate(()=>{board[7][7]=board[7][8]=board[7][9]=2;board[3][3]=1;refreshStones();updateTurn();});
   await p.click('#btn-draw'); await p.waitForTimeout(200);
-  ok(name+' AI refuses draw (has 3 in an open line)', await p.evaluate(()=>!gameOver&&document.getElementById('turn-text').textContent.includes('거절')));
+  ok(name+' AI refuses draw (has 3 in an open line) + notice', await p.evaluate(()=>!gameOver&&document.getElementById('vote-note').textContent==='AI가 무승부를 거절했습니다 — 게임이 계속됩니다!'));
   await p.click('#btn-draw'); await p.waitForTimeout(200);
-  ok(name+' 2 offers per game, then buttons hidden', !(await vis('btn-draw')) && !(await vis('btn-resign')));
+  ok(name+' 2 offers per game: draw stays visible but disabled, resign untouched', await vis('btn-draw') && await vis('btn-resign') && await p.evaluate(()=>document.getElementById('btn-draw').disabled&&!document.getElementById('btn-resign').disabled));
   await p.evaluate(()=>{selectColor(1);board=board.map((r,i)=>r.map((_,j)=>((i>>1)+j)%2+1));board[7][7]=board[0][0]=0;refreshStones();updateTurn();}); await p.waitForTimeout(300);
   ok(name+' no-move notice, game goes on', await p.evaluate(()=>!gameOver&&document.getElementById('turn-text').textContent.includes('더 이상 둘 수가 없습니다')));
   ok(name+' draw button highlighted', await p.evaluate(()=>document.getElementById('btn-draw').classList.contains('hot')));
