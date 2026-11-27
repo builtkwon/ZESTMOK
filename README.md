@@ -23,13 +23,16 @@
 | 쉬움 | 입문 | 1수 앞만 보고, 상대 5목을 절반만 막음 |
 | 보통 | 중급 | 3수 탐색, 열린 3·4 대응 |
 | 어려움 | 상급 | 4수 탐색(후보 12, 최대 0.8초) + 연속 4 강제승 탐색(공격·수비) |
-| æ 원준 | 보스 | 10수 탐색(최대 3.5초, 후보 12) + 4연속·열린3 강제승(VCF/VCT) 탐색, 전치표로 같은 국면 중복 계산 제거 |
+| æ 원준 | 보스 | 초반 정석표(Rapfi로 만든 `ai-open.js`) + 패턴표 평가(Rapfi에 맞춘 점수표) + 10수 탐색(최대 3.5초, 루트 후보 24·내부 16) + 4연속·열린3 강제승(VCF/VCT) 탐색, 전치표로 같은 국면 중복 계산 제거 |
 
 서열 측정(`node tests/duel.js A B 쌍수`, 고정 깊이·색 교대·무작위 오프닝, 순차 실행): 쉬움 대 보통 24:76 · 보통 대 어려움 36:64 · 어려움 대 보스 23:77(40판).
 
 æ 원준 난이도에서는 AI 돌이 원준 사진으로 바뀌고, 지면 결과 화면에 사진과 "패배"가 표시됩니다.
 
 원준 강화:
+- **초반 정석표**: 보스가 흑(가운데 첫 수)·백일 때 자주 나오는 초반 국면(약 12수까지)에서 Rapfi(로컬 엔진, 사이트에 없음)가 200만 노드로 찾은 최선수를 둡니다. 8가지 회전·대칭과 평행이동까지 같은 국면으로 알아봅니다(돌과 수가 판 가장자리 2칸 안이면 쓰지 않음). 흑 금수 자리, 전에 졌던 수(학습 `avoid`)는 두지 않고 탐색으로 넘어갑니다. `ai-open.js`, 보스 단계에서만 지연 로드.
+- **패턴표 평가 (보스만)**: 빈 칸마다 4방향 줄 모양(열린/닫힌 1~4, 5, 장목 11종)을 표에서 읽고, 돌을 놓을 때 그 줄의 칸만 고칩니다(증분). 평가 = 칸마다 4방향 모양 조합(1001가지)의 점수 합 + 위협 지표, 점수는 Rapfi 승률에 맞춘 값(`tools/engine/fit-eval.js`). 예전 5칸 구간 평가보다 노드당 약 4배 빠름. 보스는 상대가 흑일 때도 흑 금수를 압니다.
+- **후보 고르기 (보스만)**: 칸 점수(맞춘 표)로 모든 근처 칸을 줄 세운 뒤, 3수 얕은 탐색 점수로 다시 줄 세워 상위 24개(+ 방어 자리)만 본 탐색에 넣습니다. 내부 노드는 표 점수 상위 12개.
 - **공격/방어 우선순위 (매 수 다시 판단)**: ① 바로 이길 수 있으면 둠 → ② 상대 5목 막기 → ③ 내 4연속 강제승 → ④ 상대 4연속 강제승 차단 → ⑤ 내가 열린 4를 만들 수 있으면 공격 우선(방어 보너스 없음) → ⑥ 아니면 상대의 열린 4 자리(+4000)와 요주 자리(+2500)에 방어 보너스를 얹어 탐색.
 - **33/44/43/6목 전부 경계**: 매 수마다 상대가 3-3 / 4-4 / 4-3 / 6목을 만들 수 있는 자리를 **모두** 찾아 탐색 후보에 넣고 먼저 차지하려 합니다. 흑은 3-3·6목이 금수라 흑 상대로는 4-4·4-3만 해당.
 - **VCT 탐색 (위협 공간 탐색)**: 4연속(VCF)뿐 아니라 열린 3까지 써서 이어지는 강제 공격을 공수 양쪽에서 탐색합니다 (최대 6수 깊이, 호출당 시간 제한). 사람의 3-3·4-3 연타 같은 수를 미리 읽고 막고, 보스에게 강제승이 있으면 바로 둡니다.
@@ -83,8 +86,9 @@ npm run serve   # http://localhost:8080
 | `index.html` | UI, 게임 로직, 방 만들기(온라인), 시계 |
 | `ai.js` | AI (패턴 평가 + 알파베타 탐색 + 대국 학습) |
 | `ai-book.js` | 보스 공용 학습 데이터 (`tools/build-book.js`가 생성, 보스 단계에서만 지연 로드) |
+| `ai-open.js` | 보스 초반 정석표 (`tools/engine/build-opening.js`가 Rapfi로 생성, 보스 단계에서만 지연 로드) |
 | `tools/build-book.js` | 수집 시트 기보 → `ai-book.js` |
-| `tools/engine/` | 로컬 Rapfi(사이트에 넣지 않음)와 대화하는 측정 도구: 규칙 검증, 보스 자기대국·채점, 지표 분석 ([`docs/boss-ai-v2.md`](docs/boss-ai-v2.md)) |
+| `tools/engine/` | 로컬 Rapfi(사이트에 넣지 않음)와 대화하는 측정·데이터 도구: 규칙 검증, 보스 자기대국·채점, 지표 분석, 정석표 생성, 학습 국면 생성·점수표 맞춤, 속도·같은 수 측정 ([`docs/boss-ai-v2.md`](docs/boss-ai-v2.md)) |
 | `team.js` | 방 규칙(순번, 시작 조건, 방장 승계, 투표 대상 `voteAsk`) + 시간 제한(일반전/속기전) + 둘 곳 판정(`bestWindow`) + 사진 주소 검증(`validAvatar`) 순수 로직 |
 | `profile.js` | 프로필(업로드·Google 사진, 누끼, `--stone-*-img` 적용). 저장 키 `zestmok-profile`, `zestmok-hide-avatars` |
 | `vendor/fonts/` | Galmuri11 (OFL 1.1) + LICENSE + README |
@@ -109,4 +113,17 @@ AI 세기 측정 (수동, 느림):
 node tests/duel.js boss hard 20          # 흑백 교대 40판, 승률만 (약 45분)
 node tests/duel-record.js 20 1 games.json  # 같은 40판 + 기보 저장
 node tests/analyze-losses.js games.json    # 진 판별 원인 분석 (판당 수 분)
+B_AI=/path/old-ai.js node tests/duel.js boss boss 20   # 새 보스(A) vs 옛 ai.js 사본의 보스(B)
+```
+
+보스 v2 도구 (로컬 Rapfi 필요, `RAPFI=/path/pbrain-rapfi`, 자세한 것은 [`docs/boss-ai-v2.md`](docs/boss-ai-v2.md)):
+
+```sh
+node tools/engine/build-opening.js /path/opening.jsonl        # 정석표 → ai-open.js (약 2시간, 이어서 하기 가능)
+node tools/engine/label.js 600 11 100000 /path/labels.jsonl   # 학습 국면 + Rapfi 승률·최선수
+node tools/engine/fit-eval.js --write /path/labels*.jsonl     # 패턴 점수표 맞춤 → ai.js TAB (엔진 불필요)
+node tools/engine/selfplay.js 20 1 200000 sp.jsonl            # 보스 vs Rapfi + 채점 (BOSS_AI=옛 사본 가능)
+node tools/engine/analyze.js sp.jsonl                         # M1·M2 (CANDS=pat: 보스 패턴 후보로 M1)
+node tools/engine/same-move.js sp.jsonl                       # 보스를 채점 국면에 다시 둬서 Rapfi와 같은 수 % + 한 수 시간
+node tools/engine/speed.js /path/old-ai.js 30 1000 sp.jsonl   # 노드/초 비교
 ```

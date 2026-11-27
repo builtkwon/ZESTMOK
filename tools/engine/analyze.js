@@ -1,5 +1,5 @@
 // P3 baseline from tools/engine/selfplay.js output (docs/boss-ai-v2.md). Fast, no engine needed.
-// Run: node tools/engine/analyze.js selfplay.jsonl [more.jsonl ...]
+// Run: node tools/engine/analyze.js selfplay.jsonl [more.jsonl ...]   (CANDS=pat: M1 of the boss's pattern candidates)
 // M1 = Rapfi's best move is inside ai.js candidates(b, p, K), for several K (positions the boss had not lost yet)
 // M2 = boss moves that drop Rapfi's winrate for the boss by more than T
 // Blunders are labelled by what Rapfi's move would have done: own four / own open three / stop opponent's four or three / quiet.
@@ -48,6 +48,7 @@ const label = (b, [r, c], p) => {
   return 'quiet';
 };
 
+const PAT = process.env.CANDS === 'pat'; // M1 with the boss's pattern candidates (ai.js pat) instead of candidates()
 const open = moves.filter(x => x.wrBefore >= 0.05); // not lost yet (Rapfi's winrate saturates fast, so winning positions count too)
 console.log(`games ${games.length}: boss ${games.filter(g => g.result === 'win').length}W ${games.filter(g => g.result === 'loss').length}L ${games.filter(g => g.result === 'draw').length}D; boss moves ${moves.length}, not-lost positions ${open.length}`);
 console.log(`same move as Rapfi: ${(100 * open.filter(x => x.boss + '' === x.best + '').length / open.length).toFixed(1)}% of not-lost positions`);
@@ -58,7 +59,8 @@ const hit = Object.fromEntries(Ks.map(k => [k, 0]));
 for (const x of open) {
   const b = board(x.pos);
   AI.bestMove(Array.from({ length: N }, () => Array(N).fill(0)), x.p, 'easy'); // sets ai.js's per-call rule flag for p
-  const c = AI.candidates(b, x.p, 50).map(m => m.row + ',' + m.col);
+  if (PAT) AI.pat.init(b);
+  const c = (PAT ? AI.pat.cands(b, x.p, 50) : AI.candidates(b, x.p, 50)).map(m => m.row + ',' + m.col);
   const at = c.indexOf(x.best + '');
   for (const k of Ks) if (at >= 0 && at < k) hit[k]++;
 }
