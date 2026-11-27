@@ -99,3 +99,23 @@ Rapfi 실행 파일, 소스, 신경망 모델, 자기대국 원본 데이터. �
   - 세기 조절이 충분히 세밀한지
   - 흑 4-4 평가 어긋남이 실전에서 얼마나 문제인지
   - 폰 성능(가장 먼저 잴 값)
+
+## 진행 기록
+
+### P0 (2026-11-27)
+- Rapfi `dotb1ue/rapfi` 1387d11을 `/Users/green/orca/engine/rapfi`에 받아 macOS arm64(NEON) Release로 빌드. 고전 모델 `classical/model260809.bin`(57KB)과 `config-example/gomocalc-classical260809.toml`을 `run/`에 둠(`coord_conversion_mode = "none"`으로 바꿈). 약 150만 노드/초.
+- 한국식 패치 3곳(패치 파일 `/Users/green/orca/engine/rapfi/korean-rule.patch`, 저장소에는 넣지 않음):
+  1. `game/pattern.cpp` 줄 패턴: 한 줄 안의 두 4를 장목(OL)으로 바꾸던 처리를 뺌
+  2. `game/pattern.cpp` `getPattern4`: 4-4를 FORBID로 바꾸던 줄을 뺌
+  3. `game/board.cpp` `checkForbiddenPoint`: 4가 둘이면 금수로 확정하던 처리를 뺌
+  나머지 렌주 분기(`wincheck.h`, `movegen.cpp`, 탐색)는 FORBID 표시와 `checkForbiddenPoint`만 보므로 따로 고치지 않음.
+- 검증 `tools/engine/check-rule.js`: 4-4 국면에서 Rapfi가 흑이면 4-4로 두고, 백이면 막음.
+- **`ai.js` 금수 버그 2개를 찾아 고침**(무작위 국면 1000개에서 Rapfi와 금수 자리 비교, 불일치 20% → 2%):
+  1. 이미 4인 줄을 3으로 셈 → 흑의 정상적인 4-3이 3-3 금수로 막혔음(사람이 흑일 때도)
+  2. 한쪽 끝이 장목이 되는 "4"를 열린 4로 셈 → 가짜 3을 셈
+  남은 2%는 렌주의 재귀 판정(3을 열린 4로 만드는 자리가 그 자체로 금수면 3이 아님)이다. `ai.js`는 단순 규칙을 유지하고, 자기대국에서는 Rapfi가 그런 자리를 두면 막고(YXBLOCK) 다시 묻는다.
+
+### P1
+- `tools/engine/rapfi.js`(프로토콜), `check-rule.js`(규칙 검증), `selfplay.js`(자기대국 + 채점), `analyze.js`(M1·M2·실착 분류). 엔진 경로는 환경변수 `RAPFI`.
+- Rapfi는 `INFO show_detail 2`로 수마다 `INFO EVAL`, `INFO WINRATE`(둘 차례 기준)를 준다. 채점은 승률로 한다.
+- 무작위 시작 4수는 한쪽으로 크게 기울어(승률 0.96 등) Rapfi 승률 0.3~0.7인 시작만 쓴다.
