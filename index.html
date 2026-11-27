@@ -1095,7 +1095,7 @@ const TC_OPTS = {n: [[0, '없음'], [300000, '5분'], [600000, '10분']], b: [[5
 const ruleName = (r) => r.k === 'b' ? `속기전 · 한 수 ${r.per / 1000}초` : r.main ? `일반전 · ${r.main / 60000}분 + 초읽기 30초×3` : '일반전 · 시간 무제한';
 function selectRule(k) {
   RULE = k === 'b' ? {k, per: 5000} : {k, main: 0};
-  renderTc();
+  again = false; renderTc();
   hideOverlay('rule-overlay');
   aiStones(false);
   if (gameMode === 'ai') showOverlay('select-overlay'); else teamEntry();
@@ -1109,7 +1109,7 @@ function renderTc() {
       const b = box.appendChild(document.createElement('button'));
       b.type = 'button'; b.className = 'level-chip'; b.textContent = label;
       b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', cur === v);
-      b.onclick = () => { RULE = RULE.k === 'b' ? {k: 'b', per: v} : {k: 'n', main: v}; renderTc(); };
+      b.onclick = () => { RULE = RULE.k === 'b' ? {k: 'b', per: v} : {k: 'n', main: v}; renderTc(); selTitle(); };
     }
   });
 }
@@ -1158,8 +1158,10 @@ const aiName = () => aiLevel === 'boss' ? 'æ 원준' : 'ZAIST';
 // boss mode: the AI's stones wear the boss's face (class = which color it plays)
 let rage = false; // set by flipTable, cleared when a new fight starts
 function applyBoss() { document.body.classList.toggle('rage', rage); document.body.classList.toggle('boss-1', gameMode === 'ai' && aiLevel === 'boss' && aiPlayer === 1); document.body.classList.toggle('boss-2', gameMode === 'ai' && aiLevel === 'boss' && aiPlayer === 2); }
+let again = false; // colour picker opened by "다시 하기"
+function selTitle() { document.getElementById('select-title').textContent = again ? `다시 하기 · ${LEVEL_NAMES[aiLevel]} · ${ruleName(RULE)}` : 'AI 대전 설정'; }
 function setLevel(l) {
-  aiLevel = l;
+  aiLevel = l; selTitle();
   try { localStorage.setItem('zestmok-level', l); } catch (e) {}
   document.querySelectorAll('.level-chip[data-level]').forEach(b => b.setAttribute('aria-checked', b.dataset.level === l));
 }
@@ -2193,7 +2195,12 @@ function showDrawOverlay(sub){
 
 function closeOverlay(){ hideOverlay('overlay'); }
 
-function rematch(){ if(gameMode==='team') return tmRematch(); newGame(); }
+// AI: back to the colour picker with the same level and time, titled with the game being replayed (team: host restarts into the lobby)
+function rematch(){
+  if(gameMode==='team') return tmRematch();
+  closeOverlay(); clockStop();
+  again=true; selTitle(); showOverlay('select-overlay');
+}
 
 function showEndOverlay(title,sub){
   const stone=document.getElementById('modal-stone');
