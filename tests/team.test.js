@@ -79,6 +79,20 @@ assert.strictEqual(T.cleanName(null), '');
   assert.deepStrictEqual(T.view(B5, T.clockInit(B5), 1200), { byo: 3800, per: 0 });
   assert(T.validClock(c) && !T.validClock({ main: 1, per: 9 }));
 }
+// avatar src validation (trust boundary: goes into CSS url("..."))
+{
+  const ok = 'https://lh3.googleusercontent.com/a/ACg8ocK_x-Y=s128-c';
+  const d = (b) => 'data:image/jpeg;base64,' + b;
+  assert(T.validAvatar(ok));
+  assert(T.validAvatar(d('AAAA+/==')) && T.validAvatar('data:image/png;base64,iVBO') && T.validAvatar('data:image/webp;base64,UklG'));
+  assert(T.validAvatar(d('A'.repeat(44000 - d('').length))), '44,000 chars ok');
+  assert(!T.validAvatar(d('A'.repeat(44001 - d('').length))), 'oversize');
+  for (const bad of [ok + '"', ok + ')', ok + ';', ok + ' x', ok + '\n', ok + '"); background:url(x', 'javascript:alert(1)',
+    'https://lh3.googleusercontent.com.evil.com/a', 'https://evil.com/lh3.googleusercontent.com/a', 'http://lh3.googleusercontent.com/a',
+    'https://lh4.googleusercontent.com/a', 'https://lh3.googleusercontent.com/', d('AA"A'), d('AA)A'), d('AA;A'), d('AA A'), d(''),
+    'data:image/svg+xml;base64,PHN2Zz4=', 'data:text/html;base64,PGI+', 'data:image/jpeg,AAAA', ok + 'A'.repeat(44000), ' ' + d('AAAA'), '', null, undefined, 1, {}, ['x']])
+    assert(!T.validAvatar(bad), 'rejects ' + String(bad).slice(0, 50));
+}
 // bestWindow: most own stones in any 5-cell line with no opponent stone (-1 = none left)
 {
   const B = () => Array.from({ length: 15 }, () => Array(15).fill(0));
