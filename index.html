@@ -360,6 +360,15 @@
     100% { box-shadow: 0 3px 10px rgba(0,0,0,0.7), 0 0 0 8px rgba(255,220,50,0); }
   }
 
+  /* hidden: after a finished game, tapping the board toggles move numbers (#stones-layer.show-order) */
+  .show-order .stone[data-n]::before {
+    content: attr(data-n);
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font: 700 calc(var(--stone-size) * 0.42)/1 var(--font-sans);
+    color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000, 0 0 1px #000;
+  }
+  .show-order .stone.last-placed::after { display: none; }
   .stone.last-placed::after {
     content: '';
     position: absolute;
@@ -1058,6 +1067,9 @@ let gameOver = false;
 let scores = {1: 0, 2: 0};
 let lastPlaced = null;
 let winningCells = [];
+let seq = []; // move order [[row, col], ...] of the current game (rooms: the host's list, sent in the snapshot)
+let orderOk = false; // the finished game's result was closed: a board tap now toggles move numbers
+let turnAt = 0, wasMyTurn = false; // when my turn last began (performance.now()); taps made before it are dropped
 let humanPlayer = 1;
 let aiPlayer = 2;
 let aiHist = []; // moves of the current AI game, fed to GomokuAI.learn when it ends
@@ -1399,7 +1411,7 @@ function tmHostMove(id, d) {
   const team = TM.turn.team;
   if (isForbidden(d.row, d.col, team)) return;
   if (!clockMove(team)) return tmHostTimeUp(team);
-  board[d.row][d.col] = team; lastPlaced = {row: d.row, col: d.col};
+  board[d.row][d.col] = team; seq.push([d.row, d.col]); lastPlaced = {row: d.row, col: d.col};
   const w = checkWin(d.row, d.col);
   if (w) { winningCells = w; gameOver = true; scores[team]++; TM.result = {winner: team, reason: 'five'}; }
   else if (board.flat().every(v => v !== 0)) { gameOver = true; TM.result = {draw: true}; }
@@ -1518,7 +1530,7 @@ function tmVoteRender() {
 
 function tmSnap() {
   const cd = Object.keys(TM.until).map(t => ({team: +t, ms: Math.max(0, TM.until[t] - Date.now())}));
-  return {type: 'snap', hostId: TM.hostId, players: TM.players, started: TM.started, turn: TM.turn, board, scores, gameOver, lastPlaced, winningCells, result: TM.result, cd, votes: TM.votes,
+  return {type: 'snap', hostId: TM.hostId, players: TM.players, started: TM.started, turn: TM.turn, board, scores, gameOver, lastPlaced, winningCells, seq, result: TM.result, cd, votes: TM.votes,
     rule: TM.rule, clock: CLK && TM.started ? {side: CLK.side, used: Date.now() - CLK.t0} : null};
 }
 function tmBroadcast() {
@@ -1614,6 +1626,7 @@ function tmGuestData(d) {
   const lp = d.lastPlaced;
   lastPlaced = lp && Number.isInteger(lp.row) && Number.isInteger(lp.col) && lp.row >= 0 && lp.row < BOARD_SIZE && lp.col >= 0 && lp.col < BOARD_SIZE ? {row: lp.row, col: lp.col} : null;
   winningCells = Array.isArray(d.winningCells) ? d.winningCells.filter(c => Array.isArray(c) && c.length === 2 && c.every(Number.isInteger)) : [];
+  seq = Array.isArray(d.seq) ? d.seq.filter(m => Array.isArray(m) && m.length === 2 && m.every(v => Number.isInteger(v) && v >= 0 && v < BOARD_SIZE)).slice(0, BOARD_SIZE * BOARD_SIZE) : [];
   tmRender();
 }
 // Connection to the host is gone: try to reconnect; the successor re-opens the room itself.
@@ -1830,8 +1843,8 @@ function updateBadges() {
 function initBoard() {
   aiHist = []; aiVotes = 0; document.getElementById('vote-note').textContent = '';
   board = Array.from({length: BOARD_SIZE}, () => Array(BOARD_SIZE).fill(0));
-  lastPlaced = null; winningCells = [];
-  stonesLayer.innerHTML = '';
+  lastPlaced = null; winningCells = []; seq = []; orderOk = false;
+  stonesLayer.innerHTML = ''; stonesLayer.classList.remove('show-order');
   stonesLayer.appendChild(ghost);
   drawBoard();
 }
@@ -1874,6 +1887,8 @@ function addStoneElement(row, col, player, isLast, isWin) {
   el.className = `stone ${player===1?'black-stone':'white-stone'}`;
   el.style.left = (MARGIN+col*CELL)+'px'; el.style.top = (MARGIN+row*CELL)+'px';
   el.dataset.row = row; el.dataset.col = col;
+  const n = seq.findIndex(([r, c]) => r === row && c === col);
+  if (n >= 0) el.dataset.n = n + 1;
   if (isLast) el.classList.add('last-placed');
   if (isWin) el.classList.add('winning');
   stonesLayer.appendChild(el);
@@ -2050,7 +2065,7 @@ function doPlaceStone(row, col, triggerAi) {
   if (gameOver || board[row][col] !== 0) return;
   if (!clockMove(currentPlayer)) return timeUp(currentPlayer);
   if (gameMode === 'ai') aiHist.push({p: currentPlayer, row, col, key: GomokuAI.posKey(board, currentPlayer)});
-  board[row][col] = currentPlayer;
+  board[row][col] = currentPlayer; seq.push([row, col]);
   document.querySelectorAll('.stone.last-placed').forEach(e=>e.classList.remove('last-placed'));
   lastPlaced = {row, col};
   announce((currentPlayer===1?'흑돌 ':'백돌 ')+coordName(row,col)+' 착수');
@@ -2137,6 +2152,10 @@ function checkWin(row,col){
 // ─── UI UPDATES ───────────────────────────────────────────────
 function updateTurn(){
   applyBoss();
+  const mt = !gameOver && myTurn();
+  if (mt && !wasMyTurn) turnAt = performance.now();
+  wasMyTurn = mt;
+  if (!gameOver) { orderOk = false; stonesLayer.classList.remove('show-order'); } // numbers belong to a finished game only
   const dot=document.getElementById('turn-dot');
   const text=document.getElementById('turn-text');
   dot.style.background=currentPlayer===1?'#222':'#e8e0d0';
@@ -2193,7 +2212,7 @@ function showDrawOverlay(sub){
   showOverlay('overlay');
 }
 
-function closeOverlay(){ hideOverlay('overlay'); }
+function closeOverlay(){ hideOverlay('overlay'); if(gameOver) orderOk = true; }
 
 // AI: back to the colour picker with the same level and time, titled with the game being replayed (team: host restarts into the lobby)
 function rematch(){
@@ -2273,13 +2292,20 @@ clickCanvas.addEventListener('keydown', (e) => {
     announce(coordName(kb.row, kb.col) + (v ? (v === 1 ? ', 흑돌' : ', 백돌') : ', 빈 칸'));
   } else if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
-    handleClick(kb.row, kb.col);
+    if (boardTap(e)) handleClick(kb.row, kb.col);
     kbShow();
   }
 });
 
+// A tap made while the opponent (AI) was moving is queued by the browser during the AI's blocking search and arrives
+// once it is my turn: drop it, and any tap within TAP_GRACE ms of my turn starting. After a finished game: move numbers.
+const TAP_GRACE = 200;
+function boardTap(e) {
+  if (gameOver) { if (orderOk && seq.length) stonesLayer.classList.toggle('show-order'); return false; }
+  return !aiThinking && e.timeStamp >= turnAt + TAP_GRACE;
+}
 clickCanvas.addEventListener('click',(e)=>{
-  if(gameOver||aiThinking)return;
+  if(!boardTap(e))return;
   const rect=clickCanvas.getBoundingClientRect();
   const scaleX=CANVAS_SIZE/rect.width,scaleY=CANVAS_SIZE/rect.height;
   const x=(e.clientX-rect.left)*scaleX,y=(e.clientY-rect.top)*scaleY;
@@ -2288,8 +2314,8 @@ clickCanvas.addEventListener('click',(e)=>{
 });
 
 clickCanvas.addEventListener('touchend',(e)=>{
-  if(gameOver||aiThinking)return;
   e.preventDefault();
+  if(!boardTap(e))return;
   const touch=e.changedTouches[0];
   const rect=clickCanvas.getBoundingClientRect();
   const scaleX=CANVAS_SIZE/rect.width,scaleY=CANVAS_SIZE/rect.height;
