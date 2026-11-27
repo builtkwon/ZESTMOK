@@ -159,7 +159,9 @@ assert(worst < 3500, "move too slow");
   const m = bestMove(d, 1, 'boss');
   assert(m.doomed, 'open four against the boss = doomed');
   // all fork kinds are defended every move (no random focus): boss takes the white 3-3 point, every time
-  for (let i = 0; i < 3; i++) { const r1 = bestMove(f, 1, 'boss'); assert(r1.row === 7 && r1.col === 7, `boss should take the white 3-3 point, got ${JSON.stringify(r1)}`); }
+  // (black stones near the centre: with all black stones in the corners Rapfi says black is already lost, and the boss sees it)
+  const f2 = empty(); put(f2, 2, [[7, 5], [7, 6], [5, 7], [6, 7]]); put(f2, 1, [[8, 6], [6, 8], [4, 4], [10, 10]]);
+  for (let i = 0; i < 3; i++) { const r1 = bestMove(f2, 1, 'boss'); assert(r1.row === 7 && r1.col === 7, `boss should take the white 3-3 point, got ${JSON.stringify(r1)}`); }
 }
 // rotation memory: a loss is remembered in all 4 rotations (posKey of the rotated board == rotKey of the key)
 {
