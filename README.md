@@ -44,6 +44,10 @@ AI는 대국 결과를 이 브라우저(`localStorage`, 난이도별로 따로)�
 - **맞춤 난이도** — 사람이 연승하면(최대 3) 탐색 깊이·후보 수가 늘어납니다(깊이 최대 +2, 후보 최대 +6). 제한 시간은 그대로입니다. AI가 이기면 연승 기록이 초기화됩니다.
 - 같은 국면(돌 배치와 차례 일치)과 그 판을 **90°·180°·270° 돌린 국면**까지 함께 기억합니다(돌린 판에서 같은 수를 둬도 알아봄, 좌우 대칭은 미포함). 최대 4,000개 국면까지 저장하고 오래된 것부터 지웁니다. 브라우저 데이터를 지우면 초기화됩니다.
 
+### 보스 공용 학습 (모든 방문자)
+
+보스 대국이 끝나면 기보(수순만, 개인정보 없음)를 구글 시트로 익명 전송합니다(페이지 하단에 작게 안내). 모은 기보를 `tools/build-book.js`로 검증해 `ai-book.js`(공용 학습)로 만들고 배포하면, 보스를 고른 모든 브라우저가 자기 학습과 함께 씁니다. 설정·갱신 방법: [`docs/boss-book.md`](docs/boss-book.md)
+
 `node tests/ladder.js`로 난이도별 상대 전적을 측정할 수 있습니다(느림).
 
 ## 실행
@@ -78,6 +82,8 @@ npm run serve   # http://localhost:8080
 |---|---|
 | `index.html` | UI, 게임 로직, 방 만들기(온라인), 시계 |
 | `ai.js` | AI (패턴 평가 + 알파베타 탐색 + 대국 학습) |
+| `ai-book.js` | 보스 공용 학습 데이터 (`tools/build-book.js`가 생성, 보스 단계에서만 지연 로드) |
+| `tools/build-book.js` | 수집 시트 기보 → `ai-book.js` |
 | `team.js` | 방 규칙(순번, 시작 조건, 방장 승계, 투표 대상 `voteAsk`) + 시간 제한(일반전/속기전) + 둘 곳 판정(`bestWindow`) + 사진 주소 검증(`validAvatar`) 순수 로직 |
 | `profile.js` | 프로필(업로드·Google 사진, 누끼, `--stone-*-img` 적용). 저장 키 `zestmok-profile`, `zestmok-hide-avatars` |
 | `vendor/fonts/` | Galmuri11 (OFL 1.1) + LICENSE + README |

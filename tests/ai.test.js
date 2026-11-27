@@ -1,6 +1,6 @@
 // Run: node tests/ai.test.js
 const assert = require('assert');
-const { bestMove, forbidden, posKey, learn, setMemory, getMemory, predict } = require('../ai.js');
+const { bestMove, forbidden, posKey, learn, setMemory, getMemory, setBook, predict } = require('../ai.js');
 const N = 15;
 const empty = () => Array.from({ length: N }, () => Array(N).fill(0));
 const put = (b, p, cells) => cells.forEach(([r, c]) => { b[r][c] = p; });
@@ -118,6 +118,19 @@ assert(worst < 3500, "move too slow");
   const n2 = bestMove(c, 1, 'normal');
   assert(!(n2.row === n1.row && n2.col === n1.col), 'AI avoids moves that lead to a known human win');
   setMemory(null);
+}
+// shared book: its avoid list works like local memory, but learning never writes into it
+{
+  setMemory(null); setBook(null);
+  const b = empty(); put(b, 1, [[7, 7], [6, 8]]); put(b, 2, [[7, 8]]);
+  const m1 = bestMove(b, 2, 'normal'), key = posKey(b, 2);
+  setBook({ avoid: { [key]: [m1.row + ',' + m1.col] }, hum: {} });
+  const m2 = bestMove(b, 2, 'normal');
+  assert(!(m2.row === m1.row && m2.col === m1.col), 'AI skips a move the shared book avoids');
+  assert(!Object.keys(getMemory().avoid).length, 'book is not copied into local memory');
+  setBook(null);
+  const m3 = bestMove(b, 2, 'normal');
+  assert(m3.row === m1.row && m3.col === m1.col, 'clearing the book restores the move');
 }
 // boss defense: fork cells, doomed flag, boss occupies a white 3-3 point
 {

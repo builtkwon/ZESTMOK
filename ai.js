@@ -298,6 +298,9 @@
   }
   const setMemory = (m) => { mem = { avoid: (m && m.avoid) || {}, hum: (m && m.hum) || {}, streak: (m && m.streak) | 0 }; };
   const getMemory = () => mem;
+  // shared book (ai-book.js, built offline from every site's boss games): read next to mem, never written back into it
+  let book = { avoid: {}, hum: {} };
+  const setBook = (m) => { book = { avoid: (m && m.avoid) || {}, hum: (m && m.hum) || {} }; };
   const trim = (o) => { const k = Object.keys(o); if (k.length > CAP) for (const x of k.slice(0, k.length - CAP + 200)) delete o[x]; };
   // 90° clockwise rotation of a cell, and of a posKey (tokens re-sorted so it equals posKey of the rotated board)
   const rot = (r, c) => [c, N - 1 - r];
@@ -327,8 +330,10 @@
   }
   // the human's most likely reply at a position (human to move), preferring ones that won before
   function predict(b, q) {
-    const e = mem.hum[posKey(b, q)];
-    if (!e) return null;
+    const k = posKey(b, q), m = mem.hum[k], o = book.hum[k];
+    if (!m && !o) return null;
+    const e = Object.assign({}, o);
+    if (m) for (const rc in m) e[rc] = e[rc] ? [e[rc][0] + m[rc][0], e[rc][1] + m[rc][1]] : m[rc];
     let best = null, bs = -1;
     for (const rc in e) { const sc = e[rc][1] * 1000 + e[rc][0]; if (sc > bs) { bs = sc; best = rc; } }
     const [r, c] = best.split(',').map(Number);
@@ -336,7 +341,7 @@
   }
   // drop moves that were lost with before, or that walk into a reply the human has already won with
   function unlearned(b, p, cands) {
-    const av = mem.avoid[posKey(b, p)], q = 3 - p;
+    const k = posKey(b, p), q = 3 - p, av = (mem.avoid[k] || []).concat(book.avoid[k] || []);
     const ok = cands.filter(m => {
       if (av && av.includes(m.row + ',' + m.col)) return false;
       b[m.row][m.col] = p;
@@ -481,7 +486,7 @@
     return lost || rawBest <= -FIVE ? { row: best.row, col: best.col, doomed: true } : best;
   }
 
-  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, predict };
+  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GomokuAI = api;
 })(typeof window !== 'undefined' ? window : globalThis);
