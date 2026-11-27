@@ -32,6 +32,13 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   const st=await p.evaluate(()=>({b:board[6][6],cnt:board.flat().filter(Boolean).length,live:document.getElementById('sr-live').textContent}));
   ok(name+' keyboard placed at (6,6) and AI replied', st.b===1&&st.cnt===2); console.log('  live:',st.live);
   await p.evaluate(()=>{gameOver=true;showWinOverlay(1);}); ok(name+' result title shows AI level', (await p.textContent('#overlay .modal-title'))==='AI 대전 · 어려움'); await p.evaluate(()=>{closeOverlay();gameOver=false;});
+  // "다시 하기" after an AI game: colour picker again, titled with the same level and time; picking starts a fresh board
+  await p.evaluate(()=>{gameOver=true;showWinOverlay(1);}); await p.click('#overlay .modal-btns .btn >> nth=0'); await p.waitForTimeout(500);
+  const rm=await p.evaluate(()=>({sel:document.getElementById('select-overlay').classList.contains('show'),mode:document.getElementById('mode-overlay').classList.contains('show'),t:document.getElementById('select-title').textContent}));
+  ok(name+' rematch opens colour picker (not mode select)', rm.sel&&!rm.mode); ok(name+' rematch title names the game', rm.t.startsWith('다시 하기 · 어려움 · ')); console.log('  title:',rm.t);
+  await p.click('#select-overlay .stone-choice >> nth=0'); await p.waitForTimeout(400);
+  ok(name+' rematch started a new game', await p.evaluate(()=>!gameOver&&board.flat().filter(Boolean).length===0&&humanPlayer===1));
+  await p.evaluate(()=>{board[6][6]=1;board[7][7]=2;refreshStones();});
   await p.evaluate(()=>newGame()); ok(name+' confirm on leaving AI game', dialogs.some(m=>m.includes('종료')));
   ok(name+' still in game after cancel', await p.evaluate(()=>board.flat().filter(Boolean).length===2));
   await p.evaluate(()=>{scores={1:2,2:0};resetScore()}); ok(name+' confirm on score reset', dialogs.some(m=>m.includes('전적')));
