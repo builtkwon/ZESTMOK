@@ -2023,7 +2023,7 @@ function aiBookLoad() {
   document.head.appendChild(s);
 }
 // every finished boss game goes to the collection sheet (docs/boss-book.md); fire and forget, no reply needed
-const BOOK_SEND = '';
+const BOOK_SEND = 'https://script.google.com/macros/s/AKfycbzzlCQ6-R-xHjQHcxYCfD3rmV085APntRrgwpRsyBXEYcjaZ-M6bYVoWHATb4koW6yFJw/exec';
 function aiSend(winner) {
   if (!BOOK_SEND || aiLevel !== 'boss') return;
   try { fetch(BOOK_SEND, {method: 'POST', mode: 'no-cors', keepalive: true, body: JSON.stringify({s: 'zestmok', ai: aiPlayer, w: winner, m: aiHist.map(h => [h.row, h.col])})}).catch(() => {}); } catch (e) {}
