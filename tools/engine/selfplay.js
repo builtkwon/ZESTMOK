@@ -6,7 +6,8 @@
 //    before its move, wrAfter: same after it (1 - Rapfi's winrate as the opponent), ms}
 // plus one {g, result: 'win'|'loss'|'draw', bossBlack, moves} line per game.
 const fs = require('fs');
-const AI = require('../../ai.js');
+const AI = require(process.env.BOSS_AI || '../../ai.js'); // BOSS_AI: grade another copy (e.g. the old boss)
+try { require('../../ai-open.js'); if (AI.setOpening) AI.setOpening(globalThis.AI_OPEN); } catch (e) { /* no book */ }
 const Rapfi = require('./rapfi.js');
 const N = 15, PAIRS = +process.argv[2] || 10, NODES = +process.argv[4] || 200000, OUT = process.argv[5] || 'selfplay.jsonl';
 let seed = +process.argv[3] || 1; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;

@@ -1,6 +1,7 @@
 // Boss vs hard with full game records (manual, slow: ~1 min/game). node tests/duel-record.js [pairs=20] [seed=1] [out=games.json]
 // Same openings as tests/duel.js. Feed the output to tests/analyze-losses.js.
 const AI = require('../ai.js');
+try { require('../ai-open.js'); AI.setOpening(globalThis.AI_OPEN); } catch (e) { /* no book */ }
 const fs = require('fs');
 const N = 15, empty = () => Array.from({ length: N }, () => Array(N).fill(0));
 const A = { ...AI.LEVELS.boss }, B = { ...AI.LEVELS.hard }, PAIRS = +process.argv[2] || 20;

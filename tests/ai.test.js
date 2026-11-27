@@ -190,4 +190,26 @@ assert(worst < 3500, "move too slow");
   const sparse = empty(); put(sparse, 2, [[7, 7]]); put(sparse, 1, [[7, 8]]);
   assert(!vct(sparse, 2, 4, { t: Date.now() + 2000 }), 'no forced win from a lone stone');
 }
+// boss opening book (ai-open.js): found through all 8 symmetries and translation; black moves must pass forbidden()
+{
+  const { canon, toCanon, setOpening, bookMove } = require('../ai.js');
+  setMemory(null); setBook(null);
+  const b = empty(); put(b, 1, [[7, 7], [6, 8]]); put(b, 2, [[7, 8], [5, 9]]); // black to move
+  const k = canon(b); setOpening({ [k.key]: toCanon(k, 8, 6) });
+  assert.deepStrictEqual(bookMove(b, 1), { row: 8, col: 6 }, 'book move on the built position');
+  const tf = [(r, c) => [c, N - 1 - r], (r, c) => [r, N - 1 - c], (r, c) => [c, r], (r, c) => [r + 2, c - 1]]; // rotate, mirror, transpose, shift
+  for (const f of tf) {
+    const t = empty(); for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c]) { const [x, y] = f(r, c); t[x][y] = b[r][c]; }
+    const [er, ec] = f(8, 6), m = bookMove(t, 1);
+    assert(m && m.row === er && m.col === ec, `book move follows the symmetry: want ${er},${ec} got ${JSON.stringify(m)}`);
+  }
+  assert.deepStrictEqual(bestMove(b, 1, 'boss'), { row: 8, col: 6 }, 'boss plays the book move');
+  // a book move that is forbidden for black (3-3) is never played; nor near the edge
+  const f = empty(); put(f, 1, [[7, 5], [7, 6], [5, 7], [6, 7]]); put(f, 2, [[3, 3], [3, 11], [11, 3], [11, 11]]);
+  const kf = canon(f); setOpening({ [kf.key]: toCanon(kf, 7, 7) });
+  assert(forbidden(f, 7, 7) && bookMove(f, 1) === null, 'forbidden book move rejected');
+  const e = empty(); put(e, 1, [[1, 7]]); const ke = canon(e); setOpening({ [ke.key]: toCanon(ke, 2, 7) });
+  assert(bookMove(e, 2) === null, 'no book near the edge');
+  setOpening(null);
+}
 console.log('ok');

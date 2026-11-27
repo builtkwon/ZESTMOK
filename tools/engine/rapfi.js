@@ -12,7 +12,9 @@ class Rapfi {
     this.q = []; this.waiters = []; this.last = {};
     readline.createInterface({ input: this.p.stdout }).on('line', (l) => {
       if (l.startsWith('INFO EVAL ')) this.last.eval = +l.slice(10);
-      else if (l.startsWith('INFO WINRATE ')) this.last.wr = +l.slice(13);
+      else if (l.startsWith('INFO WINRATE ')) { this.last.wr = +l.slice(13); if (this.pv) this.pv[this.pvi] = { wr: this.last.wr }; }
+      else if (l.startsWith('INFO PV ') && l !== 'INFO PV DONE') this.pvi = +l.slice(8);
+      else if (l.startsWith('INFO BESTLINE ') && this.pv && this.pv[this.pvi]) { const [x, y] = l.slice(14).split(' ')[0].split(',').map(Number); this.pv[this.pvi].move = [y, x]; }
       if (l.startsWith('MESSAGE') || l.startsWith('DEBUG') || l.startsWith('INFO')) return this.onMsg && this.onMsg(l);
       if (l.startsWith('ERROR')) console.error('rapfi:', l);
       const w = this.waiters.shift(); if (w) w(l); else this.q.push(l);
@@ -48,6 +50,16 @@ class Rapfi {
     this.board(moves, 'BOARD');
     const [x, y] = (await this.line()).split(',').map(Number);
     return { move: [y, x], eval: this.last.eval, wr: this.last.wr };
+  }
+  // top-n moves for the side to move (YXNBEST, node limit shared by all n): [{move, wr}] best first
+  async nbest(moves, n) {
+    this.send('YXBLOCKRESET');
+    this.pv = []; this.pvi = 0;
+    this.board(moves, 'YXBOARD');
+    this.send('YXNBEST ' + n);
+    await this.line();
+    const out = this.pv.filter(x => x && x.move); this.pv = null;
+    return out;
   }
   async forbid(moves) { // black-to-move forbidden points (engine's rule), as "r,c" strings
     this.board(moves, 'YXBOARD');

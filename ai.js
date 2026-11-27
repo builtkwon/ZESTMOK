@@ -12,7 +12,7 @@
     easy:   { depth: 1, K: 5,  ms: 0,    vcf: 0 },
     normal: { depth: 3, K: 8,  ms: 600,  vcf: 0 },
     hard:   { depth: 4, K: 12, ms: 800,  vcf: 4 },   // measured (tests/duel.js, 80 games): beats normal 64%; boss beats this 77% (31-9 of 40)
-    boss:   { depth: 10, K: 12, ms: 3500, vcf: 16, vctD: 6, def: true }, // 원준: deepest search + VCF/VCT + explicit defense (self-play: beats the old hard 6-2 / 7-1)
+    boss:   { depth: 10, K: 12, ms: 3500, vcf: 16, vctD: 6, def: true, book: true }, // 원준: deepest search + VCF/VCT + explicit defense (self-play: beats the old hard 6-2 / 7-1)
   };
 
   const inside = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
@@ -373,6 +373,42 @@
     return ok.length ? ok : cands;
   }
 
+  // ── opening book (boss only): ai-open.js, built offline by tools/engine/build-opening.js from Rapfi's best moves ──
+  // Keyed by the position up to the 8 board symmetries and translation, so a human opening off-centre still hits.
+  // Used only while every stone and the move stay 2+ cells from the edge (the book was built around the centre).
+  const TF = [[1, 0, 0, 1], [0, 1, -1, 0], [-1, 0, 0, -1], [0, -1, 1, 0], [1, 0, 0, -1], [-1, 0, 0, 1], [0, 1, 1, 0], [0, -1, -1, 0]];
+  const ch = (v) => String.fromCharCode(72 + v); // 'H' = 0; book moves may sit just outside the stones' box (negative)
+  // canonical key of a position: min over the 8 transforms (r,c) -> (a r + b c, e r + f c), shifted so the stones' box starts at 0,0
+  function canon(b) {
+    const st = [];
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c]) st.push([r, c, b[r][c]]);
+    let best = null;
+    TF.forEach(([a, bb, e, f], t) => {
+      const x = st.map(([r, c, v]) => [a * r + bb * c, e * r + f * c, v]);
+      const r0 = Math.min(...x.map(s => s[0])), c0 = Math.min(...x.map(s => s[1]));
+      const tok = (v) => x.filter(s => s[2] === v).map(s => ch(s[0] - r0) + ch(s[1] - c0)).sort().join('');
+      const key = tok(1) + '/' + tok(2);
+      if (!best || key < best.key) best = { key, t, r0, c0 };
+    });
+    return best;
+  }
+  // a board move -> its 2-char code in the canonical frame of `k` (builder side), and back (lookup side)
+  const toCanon = (k, r, c) => { const [a, bb, e, f] = TF[k.t]; return ch(a * r + bb * c - k.r0) + ch(e * r + f * c - k.c0); };
+  const fromCanon = (k, m) => { const [a, bb, e, f] = TF[k.t], x = m.charCodeAt(0) - 72 + k.r0, y = m.charCodeAt(1) - 72 + k.c0; return [a * x + e * y, bb * x + f * y]; };
+  let opening = {};
+  const setOpening = (m) => { opening = m || {}; };
+  const edgeOk = (r, c) => r >= 2 && r <= N - 3 && c >= 2 && c <= N - 3;
+  function bookMove(b, p) {
+    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c] && !edgeOk(r, c)) return null;
+    const k = canon(b), m = opening[k.key];
+    if (!m) return null;
+    const [r, c] = fromCanon(k, m);
+    if (!edgeOk(r, c) || b[r][c] || (p === 1 && forbidden(b, r, c))) return null;
+    const key = posKey(b, p), rc = r + ',' + c;
+    if ((mem.avoid[key] || []).includes(rc) || (book.avoid[key] || []).includes(rc)) return null; // lost with it here before: search instead
+    return { row: r, col: c };
+  }
+
   let koreanBlack = false; // set per bestMove call: AI plays black under Korean rules
 
   // candidate moves near existing stones, best first. Forced moves (win / block five) are returned alone.
@@ -434,6 +470,7 @@
     koreanBlack = p === 1;
     const stones = b.flat().filter(Boolean).length;
     if (!stones) return { row: 7, col: 7 };
+    if (L.book) { const m = bookMove(b, p); if (m) return m; }
     if (stones === 1) { // answer next to the first stone
       for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c]) {
         const d = [[1, 1], [1, -1], [-1, 1], [-1, -1], [0, 1], [1, 0]][Math.floor(Math.random() * 6)];
@@ -507,7 +544,7 @@
     return lost || rawBest <= -FIVE ? { row: best.row, col: best.col, doomed: true } : best;
   }
 
-  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict, candidates };
+  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict, candidates, canon, toCanon, fromCanon, setOpening, bookMove };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GomokuAI = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -2013,6 +2013,15 @@ function aiMemLoad() {
   try { m = JSON.parse(localStorage.getItem(memKey())); } catch (e) {}
   GomokuAI.setMemory(m);
   aiBookLoad();
+  aiOpenLoad();
+}
+// boss opening book (ai-open.js, built by tools/engine/build-opening.js with Rapfi): only the boss reads it, loaded on first use
+function aiOpenLoad() {
+  if (window.AI_OPEN) return GomokuAI.setOpening(window.AI_OPEN);
+  if (aiLevel !== 'boss' || document.getElementById('ai-open')) return;
+  const s = document.createElement('script');
+  s.id = 'ai-open'; s.src = 'ai-open.js'; s.onload = aiOpenLoad;
+  document.head.appendChild(s);
 }
 // shared boss book (ai-book.js, built by tools/build-book.js from collected games): boss level only, loaded on first use
 function aiBookLoad() {
