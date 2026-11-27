@@ -36,6 +36,7 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   await p.evaluate(()=>{gameOver=true;showWinOverlay(1);}); await p.click('#overlay .modal-btns .btn >> nth=0'); await p.waitForTimeout(500);
   const rm=await p.evaluate(()=>({sel:document.getElementById('select-overlay').classList.contains('show'),mode:document.getElementById('mode-overlay').classList.contains('show'),t:document.getElementById('select-title').textContent}));
   ok(name+' rematch opens colour picker (not mode select)', rm.sel&&!rm.mode); ok(name+' rematch title names the game', rm.t.startsWith('다시 하기 · 어려움 · ')); console.log('  title:',rm.t);
+  ok(name+' rematch picker has 뒤로 -> home', await p.evaluate(()=>{selectBack();const h=document.getElementById('mode-overlay').classList.contains('show');hideOverlay('mode-overlay');showOverlay('select-overlay');return h;}));
   await p.click('#select-overlay .stone-choice >> nth=0'); await p.waitForTimeout(400);
   ok(name+' rematch started a new game', await p.evaluate(()=>!gameOver&&board.flat().filter(Boolean).length===0&&humanPlayer===1));
   // taps made before my turn began (queued during the AI's search) are dropped; later ones go through
@@ -47,12 +48,13 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   const od=await p.evaluate(()=>{closeOverlay();boardTap({timeStamp:1e12});const on=stonesLayer.classList.contains('show-order');const n=[...stonesLayer.querySelectorAll('.stone')].map(e=>e.dataset.n).join(',');boardTap({timeStamp:1e12});return {on,n,off:!stonesLayer.classList.contains('show-order')};});
   ok(name+' tap after game shows move order 1,2,3 and toggles off', od.on&&od.n==='1,2,3'&&od.off);
   // boss: refuses draw and resign, always
-  const rf=await p.evaluate(()=>{setLevel('boss');gameOver=false;aiThinking=false;initBoard();humanPlayer=1;aiPlayer=2;currentPlayer=1;ctlRender();offerDraw();const d=document.getElementById('vote-note').textContent;resign();return {d,r:document.getElementById('vote-note').textContent,over:gameOver};});
+  const rf=await p.evaluate(()=>{setLevel('boss');gameOver=false;aiThinking=false;initBoard();board[7][5]=board[7][6]=board[7][7]=2;humanPlayer=1;aiPlayer=2;currentPlayer=1;ctlRender();offerDraw();const d=document.getElementById('vote-note').textContent;resign();return {d,r:document.getElementById('vote-note').textContent,over:gameOver};});
   ok(name+' boss refuses draw and resign', rf.d.includes('무승부를 거절')&&rf.r.includes('항복을 거절')&&!rf.over);
+  ok(name+' boss takes a draw when it has no line left', await p.evaluate(()=>{aiVotes=0;initBoard();gameOver=false;ctlRender();offerDraw();const r=gameOver&&document.getElementById('modal-sub').textContent.includes('수가 안 보이나 보군');closeOverlay();gameOver=false;return r;}));
   // easter egg: boss about to make five -> 250 taps in 10 s flips the table (void game, same colours, score unchanged)
   const egg=async(n)=>{await p.evaluate(()=>{initBoard();scores={1:0,2:0};for(const c of [3,4,5,6])board[7][c]=2;for(const c of [3,4,5,6])board[9][c]=1;board[0][0]=1;refreshStones();currentPlayer=2;bossEgg({row:7,col:7});});
     ok(name+' egg: stone blinks + "250번 내리쳐라!"', await p.evaluate(()=>!!document.querySelector('.stone.egg-blink')&&document.querySelector('.egg').textContent.includes('250번 내리쳐라!')));
-    await p.waitForTimeout(2600); await p.evaluate((n)=>{const u=document.querySelector('.egg');for(let i=0;i<n;i++)u.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));},n);};
+    await p.waitForTimeout(1300); ok(name+' egg: gauge full + "바둑판을 탭하세요!"', await p.evaluate(()=>document.querySelector('.egg-sub').textContent==='바둑판을 탭하세요!'&&document.querySelector('.egg-bar i').style.width==='100%')); await p.waitForTimeout(3000); await p.evaluate((n)=>{const u=document.querySelector('.egg');for(let i=0;i<n;i++)u.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));},n);};
   await egg(250); await p.waitForTimeout(4500);
   ok(name+' egg 250 taps: table flipped, new empty game, score unchanged', await p.evaluate(()=>!document.querySelector('.egg')&&!gameOver&&board.flat().every(v=>!v)&&scores[1]===0&&scores[2]===0&&humanPlayer===1));
   if(name==='desktop'){ await egg(100); await p.waitForTimeout(12500);
