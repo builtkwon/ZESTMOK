@@ -507,7 +507,7 @@
     return lost || rawBest <= -FIVE ? { row: best.row, col: best.col, doomed: true } : best;
   }
 
-  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict };
+  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict, candidates };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GomokuAI = api;
 })(typeof window !== 'undefined' ? window : globalThis);

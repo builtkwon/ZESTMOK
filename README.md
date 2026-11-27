@@ -84,6 +84,7 @@ npm run serve   # http://localhost:8080
 | `ai.js` | AI (패턴 평가 + 알파베타 탐색 + 대국 학습) |
 | `ai-book.js` | 보스 공용 학습 데이터 (`tools/build-book.js`가 생성, 보스 단계에서만 지연 로드) |
 | `tools/build-book.js` | 수집 시트 기보 → `ai-book.js` |
+| `tools/engine/` | 로컬 Rapfi(사이트에 넣지 않음)와 대화하는 측정 도구: 규칙 검증, 보스 자기대국·채점, 지표 분석 ([`docs/boss-ai-v2.md`](docs/boss-ai-v2.md)) |
 | `team.js` | 방 규칙(순번, 시작 조건, 방장 승계, 투표 대상 `voteAsk`) + 시간 제한(일반전/속기전) + 둘 곳 판정(`bestWindow`) + 사진 주소 검증(`validAvatar`) 순수 로직 |
 | `profile.js` | 프로필(업로드·Google 사진, 누끼, `--stone-*-img` 적용). 저장 키 `zestmok-profile`, `zestmok-hide-avatars` |
 | `vendor/fonts/` | Galmuri11 (OFL 1.1) + LICENSE + README |
