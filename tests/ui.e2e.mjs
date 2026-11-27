@@ -51,13 +51,19 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   const rf=await p.evaluate(()=>{setLevel('boss');gameOver=false;aiThinking=false;initBoard();board[7][5]=board[7][6]=board[7][7]=2;humanPlayer=1;aiPlayer=2;currentPlayer=1;ctlRender();offerDraw();const d=document.getElementById('vote-note').textContent;resign();return {d,r:document.getElementById('vote-note').textContent,over:gameOver};});
   ok(name+' boss refuses draw and resign', rf.d.includes('무승부를 거절')&&rf.r.includes('항복을 거절')&&!rf.over);
   ok(name+' boss takes a draw when it has no line left', await p.evaluate(()=>{aiVotes=0;initBoard();gameOver=false;ctlRender();offerDraw();const r=gameOver&&document.getElementById('modal-sub').textContent.includes('수가 안 보이나 보군');closeOverlay();gameOver=false;return r;}));
-  // easter egg: boss about to make five -> 250 taps in 10 s flips the table (void game, same colours, score unchanged)
+  // easter egg: boss about to make five -> 300 taps in 10 s flips the table (void game, same colours, score unchanged)
   const egg=async(n)=>{await p.evaluate(()=>{initBoard();scores={1:0,2:0};for(const c of [3,4,5,6])board[7][c]=2;for(const c of [3,4,5,6])board[9][c]=1;board[0][0]=1;refreshStones();currentPlayer=2;bossEgg({row:7,col:7});});
-    ok(name+' egg: stone blinks + "250번 내리쳐라!"', await p.evaluate(()=>!!document.querySelector('.stone.egg-blink')&&document.querySelector('.egg').textContent.includes('250번 내리쳐라!')));
-    await p.waitForTimeout(1300); ok(name+' egg: gauge full + "바둑판을 탭하세요!"', await p.evaluate(()=>document.querySelector('.egg-sub').textContent==='바둑판을 탭하세요!'&&document.querySelector('.egg-bar i').style.width==='100%')); await p.waitForTimeout(3000); await p.evaluate((n)=>{const u=document.querySelector('.egg');for(let i=0;i<n;i++)u.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));},n);};
-  await egg(250); await p.waitForTimeout(4500);
-  ok(name+' egg 250 taps: table flipped, new empty game, score unchanged', await p.evaluate(()=>!document.querySelector('.egg')&&!gameOver&&board.flat().every(v=>!v)&&scores[1]===0&&scores[2]===0&&humanPlayer===1));
-  if(name==='desktop'){ await egg(100); await p.waitForTimeout(12500);
+    ok(name+' egg: stone blinks + "300번 내리쳐라!"', await p.evaluate(()=>!!document.querySelector('.stone.egg-blink')&&document.querySelector('.egg').textContent.includes('300번 내리쳐라!')));
+    await p.waitForTimeout(1300); ok(name+' egg: gauge full + "바둑판을 탭하세요!"', await p.evaluate(()=>['바둑판을 탭하세요!','클릭하거나 스페이스바를 누르세요!'].includes(document.querySelector('.egg-sub').textContent)&&document.querySelector('.egg-bar i').style.width==='100%')); await p.waitForTimeout(3000); await p.evaluate((n)=>{const u=document.querySelector('.egg');for(let i=0;i<n;i++)u.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));},n);};
+  await egg(300); await p.waitForTimeout(4500);
+  ok(name+' egg 300 taps: table flipped, new empty game, score unchanged', await p.evaluate(()=>!document.querySelector('.egg')&&!gameOver&&board.flat().every(v=>!v)&&scores[1]===0&&scores[2]===0&&humanPlayer===1));
+  ok(name+' egg once per AI match: not again after the flip, not below boss', await p.evaluate(()=>{const n=document.querySelectorAll('.egg').length;const B=GomokuAI.bestMove;GomokuAI.bestMove=()=>({row:7,col:7});
+    const run=()=>{initBoard();for(const c of [3,4,5,6])board[7][c]=2;for(const c of [3,4,5,6])board[9][c]=1;board[0][0]=1;refreshStones();gameOver=false;currentPlayer=2;doAiMove();};
+    return new Promise(res=>{run();setTimeout(()=>{const again=!!document.querySelector('.egg');const won=gameOver;setLevel('hard');eggUsed=false;run();setTimeout(()=>{const hard=!!document.querySelector('.egg');GomokuAI.bestMove=B;setLevel('boss');res(!again&&won&&!hard&&n===0);},300);},300);});}));
+  await p.evaluate(()=>{eggUsed=false;closeOverlay();gameOver=false;});
+  if(name==='desktop'){ await egg(100); for(let i=0;i<10;i++) await p.keyboard.press('Space');
+    ok(name+' egg: clicks + Space both count (110/300 -> gauge 63%)', await p.evaluate(()=>Math.round(parseFloat(document.querySelector('.egg-bar i').style.width))===63));
+    await p.waitForTimeout(13000);
     ok(name+' egg 100 taps: boss laughs then wins', await p.evaluate(()=>!document.querySelector('.egg')&&gameOver&&board[7][7]===2&&scores[2]===1)); }
   await p.evaluate(()=>{closeOverlay();setLevel('hard');gameOver=false;aiThinking=false;initBoard();board[6][6]=1;board[7][7]=2;refreshStones();});
   await p.evaluate(()=>newGame()); ok(name+' confirm on leaving AI game', dialogs.some(m=>m.includes('종료')));
