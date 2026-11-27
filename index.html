@@ -377,7 +377,7 @@
     background: rgba(255,100,50,0.8);
   }
 
-  /* boss easter egg: "250번 내리쳐라!" (bossEgg) */
+  /* boss easter egg: "300번 내리쳐라!" (bossEgg) */
   .stone.egg-blink { animation: eggBlink 0.5s steps(2, jump-none) infinite; }
   @keyframes eggBlink { 50% { opacity: 0.15; } }
   .egg { position: fixed; inset: 0; z-index: 60; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; background: rgba(0,0,0,0.25); display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; }
@@ -1827,7 +1827,7 @@ function selectColor(color) {
   aiMemLoad();
   updateBadges();
   gameOver = false;
-  aiThinking = false; flipUsed = rage = false;
+  aiThinking = false; flipUsed = rage = eggUsed = false; // boss flip and my flip (egg): once per AI match each
   currentPlayer = 1;
   document.getElementById('conn-status').style.display = 'none';
   initBoard();
@@ -1858,7 +1858,7 @@ function updateBadges() {
 function initBoard() {
   aiHist = []; aiVotes = 0; document.getElementById('vote-note').textContent = '';
   board = Array.from({length: BOARD_SIZE}, () => Array(BOARD_SIZE).fill(0));
-  lastPlaced = null; winningCells = []; seq = []; orderOk = false; eggUsed = false;
+  lastPlaced = null; winningCells = []; seq = []; orderOk = false;
   stonesLayer.innerHTML = ''; stonesLayer.classList.remove('show-order');
   stonesLayer.appendChild(ghost);
   drawBoard();
@@ -2156,10 +2156,10 @@ async function flipBack(wrap, rm) { // the board reassembles
 }
 function makesFive(r, c, p) { board[r][c] = p; const w = checkWin(r, c); board[r][c] = 0; return !!w; }
 
-// Easter egg: the boss is about to make five -> its stone blinks, "250번 내리쳐라!" + 3, 2, 1, then EGG_MS of taps anywhere.
+// Easter egg: the boss is about to make five -> its stone blinks, "300번 내리쳐라!" + 3, 2, 1, then EGG_MS of taps anywhere.
 // EGG_TAPS taps = I flip the table: game void (score unchanged, learned as the boss's win), new game with the same colours.
-// Fewer = the boss laughs and plays the five. Once per game.
-const EGG_TAPS = 250, EGG_MS = 10000;
+// Fewer = the boss laughs and plays the five. Once per AI match (reset in selectColor), boss only.
+const EGG_TAPS = 300, EGG_MS = 10000;
 let eggUsed = false;
 const pause = (ms) => new Promise(r => setTimeout(r, ms));
 async function bossEgg(move) {
@@ -2176,19 +2176,20 @@ async function bossEgg(move) {
   bar.style.transition = rm ? 'none' : 'width 1s ease-out';
   requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = '100%'; }));
   await pause(1000);
-  sub.textContent = '바둑판을 탭하세요!';
+  sub.textContent = matchMedia('(pointer: fine)').matches ? '클릭하거나 스페이스바를 누르세요!' : '바둑판을 탭하세요!'; // PC: mouse clicks and Space both count
   for (const n of [3, 2, 1]) { num.textContent = n; await pause(1000); }
   bar.style.transition = 'none';
   let taps = 0;
   const hit = () => { if (taps < EGG_TAPS) taps++; bar.style.width = (100 * (EGG_TAPS - taps) / EGG_TAPS) + '%'; if (!rm) wrap.animate([{transform: `translate(${rnd(4)}px,${rnd(4)}px)`}, {transform: 'none'}], {duration: 80}); };
-  const key = (e) => { if (!e.repeat && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); hit(); } };
-  ui.addEventListener('pointerdown', hit); document.addEventListener('keydown', key, true);
+  const key = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (e.type === 'keydown' && !e.repeat) hit(); } }; // held key = 1; never reaches a focused button
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  ui.addEventListener('pointerdown', hit); document.addEventListener('keydown', key, true); document.addEventListener('keyup', key, true);
   const end = performance.now() + EGG_MS;
   while (taps < EGG_TAPS && performance.now() < end && board === B && gameMode === 'ai') {
     num.textContent = `${Math.ceil((end - performance.now()) / 1000)}초`;
     await pause(50);
   }
-  ui.removeEventListener('pointerdown', hit); document.removeEventListener('keydown', key, true);
+  ui.removeEventListener('pointerdown', hit); document.removeEventListener('keydown', key, true); document.removeEventListener('keyup', key, true);
   if (board !== B || gameMode !== 'ai') { ui.remove(); return; } // player left mid-egg
   blink.remove();
   if (taps >= EGG_TAPS) {
