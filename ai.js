@@ -57,6 +57,15 @@
     while (inside(r + dr * (hi + 1), c + dc * (hi + 1)) && b[r + dr * (hi + 1)][c + dc * (hi + 1)] === p) hi++;
     return { n: hi - lo + 1, lo, hi };
   }
+  // an end of a four that really wins: empty, and for black it must make exactly five (an overline end does not count)
+  function openEnd(b, r, c, dr, dc, p) {
+    if (!inside(r, c) || b[r][c]) return false;
+    if (p !== 1) return true;
+    b[r][c] = p;
+    const n = run(b, r, c, dr, dc, p).n;
+    b[r][c] = 0;
+    return n === 5;
+  }
   // after placing at (r,c): is there a way to make an open four (exactly 4, both ends empty) using this stone?
   function openThree(b, r, c, dr, dc, p) {
     for (let k = -4; k <= 4; k++) {
@@ -65,9 +74,21 @@
       b[er][ec] = p;
       const x = run(b, er, ec, dr, dc, p);
       const lr = er + dr * (x.lo - 1), lc = ec + dc * (x.lo - 1), hr = er + dr * (x.hi + 1), hc = ec + dc * (x.hi + 1);
-      const open = x.n === 4 && -k >= x.lo && -k <= x.hi && inside(lr, lc) && !b[lr][lc] && inside(hr, hc) && !b[hr][hc];
+      const open = x.n === 4 && -k >= x.lo && -k <= x.hi && openEnd(b, lr, lc, dr, dc, p) && openEnd(b, hr, hc, dr, dc, p);
       b[er][ec] = 0;
       if (open) return true;
+    }
+    return false;
+  }
+  // black already at (r,c): this line is a four (one more black stone makes exactly five), so it is not a three
+  function fourLine(b, r, c, dr, dc) {
+    for (let k = -4; k <= 4; k++) {
+      const er = r + dr * k, ec = c + dc * k;
+      if (!k || !inside(er, ec) || b[er][ec]) continue;
+      b[er][ec] = 1;
+      const n = run(b, er, ec, dr, dc, 1).n;
+      b[er][ec] = 0;
+      if (n === 5) return true;
     }
     return false;
   }
@@ -76,7 +97,7 @@
     b[r][c] = 1;
     let five = false, over = false, threes = 0;
     for (const [dr, dc] of DIRS) { const n = run(b, r, c, dr, dc, 1).n; if (n === 5) five = true; else if (n > 5) over = true; }
-    if (!five && !over) for (const [dr, dc] of DIRS) if (openThree(b, r, c, dr, dc, 1)) threes++;
+    if (!five && !over) for (const [dr, dc] of DIRS) if (!fourLine(b, r, c, dr, dc) && openThree(b, r, c, dr, dc, 1)) threes++;
     b[r][c] = 0;
     return !five && (over || threes >= 2);
   }

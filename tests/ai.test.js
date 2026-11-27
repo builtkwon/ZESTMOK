@@ -36,6 +36,14 @@ for (const lv of ['normal', 'hard']) {
   assert(forbidden(d, 7, 6), 'overline forbidden');
   const e = empty(); put(e, 1, [[7, 3], [7, 4], [7, 5], [7, 6]]);
   assert(!forbidden(e, 7, 7) && !forbidden(e, 7, 2), 'exact five allowed');
+  // a line that is already a four is not a three: four + three is legal (was wrongly 3-3)
+  const f = empty(); put(f, 1, [[7, 4], [7, 6], [7, 8], [5, 5], [6, 5]]);
+  assert(!forbidden(f, 7, 5), '4-3 allowed (X*X.X four + open three)');
+  // a "four" whose end would make six is not an open four for black, so not a three
+  const g = empty(); put(g, 1, [[6, 4], [6, 5], [6, 7], [6, 9], [4, 8], [5, 8]]);
+  assert(!forbidden(g, 6, 8), 'overline-ended shape is not a three');
+  put(g, 1, [[4, 10], [5, 9]]); // plus a real open three on the anti-diagonal: now 3-3
+  assert(forbidden(g, 6, 8), 'two real threes still forbidden');
   // the AI (black) must not pick the 3-3 point even when it is the best-looking move
   for (const lv of ['easy', 'normal', 'hard']) for (let i = 0; i < 20; i++) {
     const m = bestMove(b, 1, lv);
