@@ -1,6 +1,6 @@
 # ZESTMOK — 작업 규칙 (다른 PC/세션 공용)
 
-정적 사이트(빌드 없음). `index.html` + `ai.js`(AI) + `team.js`(방·시계 순수 로직). 설명은 `README.md`, 설계·측정 기록은 `docs/`.
+정적 사이트(빌드 없음). `index.html` + `ai.js`(AI) + `team.js`(방·시계 순수 로직) + `profile.js`(사진 돌, 로그인). 설명은 `README.md`, 설계·측정 기록은 `docs/`.
 
 ## 워크플로
 - main에서 직접 작업하지 말고 브랜치 → PR → `gh pr merge --merge`(머지 커밋 방식).

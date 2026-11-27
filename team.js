@@ -100,7 +100,11 @@
     return players.filter(p => p.online && p.id !== fromId && (kind === 'draw' || p.team === me.team)).map(p => p.id);
   }
 
-  const api = { MAX_PLAYERS, MAX_TEAM, WIPE_MS, mover, advance, wiped, canPick, canStart, autoTeam, successor, cleanName, validMove, validSnap, BYO_MS, BYO_N, validRule, clockInit, budget, spend, view, validClock, bestWindow, voteAsk };
+  // Photo stone src from peers (docs/profile-stones.md). The charset keeps url("...") CSS-injection free.
+  const validAvatar = (s) => typeof s === 'string' && s.length <= 44000 &&
+    /^(https:\/\/lh3\.googleusercontent\.com\/[A-Za-z0-9_\-/=]+|data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$/.test(s);
+
+  const api = { MAX_PLAYERS, MAX_TEAM, WIPE_MS, mover, advance, wiped, canPick, canStart, autoTeam, successor, cleanName, validMove, validSnap, validAvatar, BYO_MS, BYO_N, validRule, clockInit, budget, spend, view, validClock, bestWindow, voteAsk };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TeamLogic = api;
 })(typeof window !== 'undefined' ? window : globalThis);

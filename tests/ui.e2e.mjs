@@ -72,8 +72,53 @@ for (const [name,opts] of [['desktop',{viewport:{width:1280,height:800}}],['mobi
   await p.evaluate(()=>{aiThinking=false;currentPlayer=2;ctlRender();});
   ok(name+' AI mode: draw usable on AI turn too', await p.evaluate(()=>!document.getElementById('btn-draw').disabled));
   await p.evaluate(()=>{currentPlayer=1;});
+  // theme: <head> script sets data-theme before paint; toggle is usable from the mode screen
+  ok(name+' theme set before scripts (follows OS, aria-pressed)', await p.evaluate(()=>{const t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';return document.documentElement.dataset.theme===t&&document.getElementById('theme-btn').getAttribute('aria-pressed')===String(t==='dark');}));
+  // default stones = ZEST photos while no profile photo is set (board, ghost, panel, choice, result modal)
+  ok(name+' no profile photo: stones use ZEST stone-black/white.jpg everywhere', await p.evaluate(()=>{
+    if(!gameOver&&!board.flat().some(Boolean)){board[7][7]=1;board[7][8]=2;} refreshStones();
+    const bg=(sel)=>[...document.querySelectorAll(sel)].map(e=>getComputedStyle(e).backgroundImage);
+    const all=(sel,re)=>{const l=bg(sel);return l.length>0&&l.every(v=>re.test(v));};
+    const modal=document.getElementById('modal-stone'); modal.className='modal-stone black-stone'; const mb=getComputedStyle(modal).backgroundImage; modal.className='modal-stone';
+    const rs=document.documentElement.style;
+    return all('.stone.black-stone',/stone-black\.jpg/)&&all('.stone.white-stone',/stone-white\.jpg/)&&all('.player-stone.black',/stone-black\.jpg/)&&all('.player-stone.white',/stone-white\.jpg/)&&all('.stone-choice-img.black',/stone-black\.jpg/)&&all('.stone-choice-img.white',/stone-white\.jpg/)&&/stone-black\.jpg/.test(mb)&&!rs.getPropertyValue('--stone-black-img')&&!rs.getPropertyValue('--stone-white-img');}));
+  ok(name+' Galmuri on body + buttons, font loaded', await p.evaluate(async()=>{await document.fonts.ready;return [document.body,document.querySelector('.btn'),document.querySelector('.level-chip')].every(e=>getComputedStyle(e).fontFamily.startsWith('Galmuri11'))&&document.fonts.check('12px Galmuri11')&&document.fonts.check('700 12px Galmuri11')&&BOARD_FONT.includes('Galmuri11');}));
+  const fsBad=await p.evaluate(()=>{const ok=new Set(['12px','24px','36px']);return [...document.querySelectorAll('body *')].filter(e=>e.textContent.trim()&&e.children.length===0&&!e.closest('script,style')&&!e.classList.contains('mode-icon')&&!e.classList.contains('sr-only')&&getComputedStyle(e).display!=='none'&&!ok.has(getComputedStyle(e).fontSize)).map(e=>e.tagName+'.'+e.className+':'+getComputedStyle(e).fontSize);});
+  ok(name+' font sizes only 12/24/36px '+JSON.stringify(fsBad), fsBad.length===0);
   const fonts=await p.evaluate(()=>getComputedStyle(document.body).fontFamily); 
   ok(name+' no page errors '+JSON.stringify(errs), errs.length===0);
+  await ctx.close();
+}
+{ // photo stones: an uploaded photo overrides only my color in AI mode; clearing it restores the ZEST photos
+  const ctx=await b.newContext({viewport:{width:1280,height:800}}); const p=await ctx.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message)); await p.goto(url); await p.waitForTimeout(300);
+  const png=Buffer.from((await p.evaluate(()=>{const c=document.createElement('canvas');c.width=c.height=200;const x=c.getContext('2d');x.fillStyle='#3a7bd5';x.fillRect(0,0,200,200);x.fillStyle='#f4b942';x.beginPath();x.arc(100,100,60,0,7);x.fill();return c.toDataURL('image/png').split(',')[1];})),'base64');
+  await p.click('#profile-btn'); ok('profile menu opens: upload + hide, no clear yet', await p.evaluate(()=>!document.getElementById('profile-menu').hidden&&document.getElementById('pm-clear').hidden&&document.getElementById('pm-hide').getAttribute('aria-pressed')==='false'));
+  await p.setInputFiles('#pm-file',{name:'t.png',mimeType:'image/png',buffer:png}); await p.waitForFunction(()=>Profile.hasUpload(),null,{timeout:8000});
+  ok('upload saved under zestmok-profile (valid avatar)', await p.evaluate(()=>{const o=JSON.parse(localStorage.getItem('zestmok-profile'));return TeamLogic.validAvatar(o.upload)&&!localStorage.getItem('ohohmok-profile');}));
+  await p.keyboard.press('Escape');
+  await p.click('#mode-overlay .mode-card >> nth=0'); await p.waitForTimeout(400); await p.click('#rule-overlay .mode-card >> nth=0'); await p.waitForTimeout(400);
+  await p.click('.stone-choice >> nth=0'); await p.waitForTimeout(600);
+  await p.evaluate(()=>{board[7][7]=1;board[7][8]=2;refreshStones();});
+  const bg=(sel)=>p.evaluate(sel=>getComputedStyle(document.querySelector(sel)).backgroundImage,sel);
+  ok('my photo on my color only: board + panel', /^url\("data:image/.test(await bg('.stone.black-stone'))&&/^url\("data:image/.test(await bg('.player-stone.black'))&&/stone-white\.jpg/.test(await bg('.stone.white-stone'))&&/stone-white\.jpg/.test(await bg('.player-stone.white')));
+  await p.evaluate(()=>{Profile.clearUpload();});
+  ok('clear photo: ZEST stones back, variables removed', /stone-black\.jpg/.test(await bg('.stone.black-stone'))&&/stone-black\.jpg/.test(await bg('.player-stone.black'))&&await p.evaluate(()=>!document.documentElement.style.getPropertyValue('--stone-black-img')));
+  ok('no page errors (photo block) '+JSON.stringify(errs), errs.length===0);
+  await ctx.close();
+}
+{ // room avatar relay: host validates, rate-limits to 1/s and sends the latest at the end of the window
+  const ctx=await b.newContext(); const p=await ctx.newPage(); await p.goto(url); await p.waitForTimeout(200);
+  const r=await p.evaluate(async()=>{
+    const sent=[]; const fake={open:true,send:m=>sent.push(m)};
+    TM={role:'host',me:'hh',conns:{gg:fake},players:[{id:'hh',team:1,online:true,name:'h'},{id:'gg',team:2,online:true,name:'g'}],av:{},avAt:{},stones:'',started:false,joined:false,until:{},votes:{},rule:RULE};
+    const A='data:image/png;base64,AAAA', B='data:image/png;base64,BBBB', C='data:image/png;base64,CCCC';
+    tmHostAvatar('gg','javascript:alert(1)'); const bad=sent.length;
+    tmHostAvatar('gg',A); tmHostAvatar('gg',B); tmHostAvatar('gg',C);
+    const first=sent.filter(m=>m.type==='avatar').map(m=>m.src); await new Promise(r=>setTimeout(r,1150));
+    const after=sent.filter(m=>m.type==='avatar').map(m=>m.src); tmAvatarOff('gg'); tmHostAvatar('gg',A);
+    const off=sent.filter(m=>m.type==='avatar').map(m=>m.src); TM=null; return {bad,first,after,off};});
+  ok('avatar relay: invalid dropped, 1/s, latest sent at window end', r.bad===0&&r.first.length===1&&r.first[0].endsWith('AAAA')&&r.after.length===2&&r.after[1].endsWith('CCCC'));
+  ok('host "사진 끄기": src null relayed, later avatars ignored', r.off.length===3&&r.off[2]===null);
   await ctx.close();
 }
 await b.close();

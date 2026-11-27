@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ZESTMOK - 오목</title>
 <meta name="description" content="ZEST와 함께하는 오목 대전">
-<meta name="theme-color" content="#2b1f0e">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="theme-color" content="#161616">
+<!-- theme before first paint (no flash): saved choice, else the OS setting -->
+<script>(function(){var t;try{t=localStorage.getItem('zestmok-theme')}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t;document.querySelector('meta[name=theme-color]').content=t==='light'?'#f2f2f2':'#161616'})()</script>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https://lh3.googleusercontent.com; font-src 'self'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'self'; form-action 'none'">
 <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
 <meta property="og:type" content="website">
 <meta property="og:title" content="ZESTMOK - 오목">
@@ -23,20 +25,44 @@
     --board-line: #7a5c30;
     --stone-black: #1a1a1a;
     --stone-white: #f5f0e8;
-    --bg: #2b1f0e;
-    --panel-bg: rgba(20, 13, 4, 0.75);
-    --accent-gold: #d4a843;
-    --accent-light: #f0d080;
-    --text-primary: #f0dfa8;
-    --text-secondary: #a09060;
+    /* UI chrome: monotone grays + one deep-green accent. Board/stone colors above stay fixed in both themes. */
+    --bg: #161616;
+    --panel-bg: #1f1f1f;
+    --modal-bg: #1f1f1f;
+    --inset-bg: rgba(0,0,0,0.35);
+    --scrim: 0,0,0;
+    --accent: #4caf7a;
+    --accent-rgb: 76,175,122;
+    --accent-light: #8fd6a8;
+    --text-primary: #ececec;
+    --text-secondary: #a3a3a3;
+    --danger: #ff7070;
     --cell-size: 40px;
     --stone-size: 34px;
     --board-size: 15;
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', system-ui, sans-serif;
-    --font-serif: 'AppleMyungjo', 'Batang', 'Noto Serif KR', serif;
+    --font-sans: Galmuri11, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
   }
+  :root[data-theme="light"] {
+    --bg: #f2f2f2;
+    --panel-bg: #ffffff;
+    --modal-bg: #ffffff;
+    --inset-bg: rgba(0,0,0,0.05);
+    --scrim: 200,200,200;
+    --accent: #1b6b3a;
+    --accent-rgb: 27,107,58;
+    --accent-light: #1f7a44;
+    --text-primary: #1d1d1d;
+    --text-secondary: #595959;
+    --danger: #b3261e;
+  }
+  :root { color-scheme: dark; }
+  :root[data-theme="light"] { color-scheme: light; }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Galmuri11 (OFL, vendor/fonts/README.md): pixel font drawn at 12px, so sizes stay at 12/24/36px */
+  @font-face { font-family: Galmuri11; font-weight: 400; font-display: swap; src: url(vendor/fonts/Galmuri11.woff2) format('woff2'); }
+  @font-face { font-family: Galmuri11; font-weight: 700; font-display: swap; src: url(vendor/fonts/Galmuri11-Bold.woff2) format('woff2'); }
+  button, input { font-family: inherit; }
 
   body {
     font-family: var(--font-sans);
@@ -50,35 +76,21 @@
     padding: 12px;
   }
 
-  /* Background texture */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 80% 60% at 50% 0%, rgba(180,130,50,0.12) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 80% at 80% 100%, rgba(100,60,10,0.2) 0%, transparent 50%);
-    pointer-events: none;
-  }
-
   header {
     text-align: center;
     margin-bottom: 20px;
-    position: relative;
-    z-index: 1;
   }
 
   h1 {
-    font-family: var(--font-serif);
-    font-size: 2.8rem;
+    font-size: 36px;
     font-weight: 800;
-    color: var(--accent-gold);
+    color: var(--accent);
     letter-spacing: 0.12em;
-    text-shadow: 0 2px 20px rgba(212,168,67,0.4);
+    text-shadow: 0 2px 20px rgba(var(--accent-rgb),0.4);
   }
 
   h1 span {
-    font-size: 1rem;
+    font-size: 12px;
     font-weight: 400;
     color: var(--text-secondary);
     letter-spacing: 0.3em;
@@ -98,7 +110,7 @@
   .panel {
     width: 200px;
     background: var(--panel-bg);
-    border: 1px solid rgba(212,168,67,0.2);
+    border: 1px solid rgba(var(--accent-rgb),0.2);
     border-radius: 12px;
     padding: 20px 16px;
     backdrop-filter: blur(10px);
@@ -117,9 +129,9 @@
   }
 
   .player-card.active {
-    border-color: var(--accent-gold);
-    background: rgba(212,168,67,0.08);
-    box-shadow: 0 0 20px rgba(212,168,67,0.15);
+    border-color: var(--accent);
+    background: rgba(var(--accent-rgb),0.08);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb),0.15);
   }
 
   .player-card.active::before {
@@ -128,8 +140,8 @@
     right: 10px;
     top: 50%;
     transform: translateY(-50%);
-    color: var(--accent-gold);
-    font-size: 0.7rem;
+    color: var(--accent);
+    font-size: 12px;
     animation: pulse 1s ease-in-out infinite;
   }
 
@@ -151,39 +163,31 @@
     aspect-ratio: 1;
   }
 
-  .player-stone.black {
-    background: radial-gradient(circle at 35% 30%, #555, #1a1a1a);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.8), inset 0 1px 2px rgba(255,255,255,0.15);
-  }
+  .player-stone.black, .player-stone.white { background-size: cover; background-position: center top; box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 
-  .player-stone.white {
-    background: radial-gradient(circle at 35% 30%, #fff, #d8d0c0);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 2px rgba(255,255,255,0.8);
-  }
 
   .player-name {
-    font-family: var(--font-serif);
-    font-size: 1rem;
+    font-size: 12px;
     font-weight: 700;
     color: var(--text-primary);
   }
 
   .player-label {
-    font-size: 0.72rem;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 0.1em;
     margin-top: 2px;
   }
 
-  .player-clock { font: 700 0.95rem/1.2 ui-monospace, monospace; color: var(--accent-light); margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .player-clock { font: 700 12px/1.2 var(--font-sans); color: var(--accent-light); margin-top: 3px; font-variant-numeric: tabular-nums; }
   .player-clock:empty { display: none; }
-  .player-clock.low { color: #ff6b5b; }
+  .player-clock.low { color: var(--danger); }
   .mode-card { position: relative; }
-  .new-tag { position: absolute; top: -9px; left: -9px; padding: 2px 7px; border-radius: 8px; background: #e74c3c; color: #fff; font: 800 0.68rem/1.3 system-ui, sans-serif; letter-spacing: 0.04em; transform: rotate(-8deg); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
+  .new-tag { position: absolute; top: -9px; left: -9px; padding: 2px 7px; border-radius: 8px; background: #e74c3c; color: #fff; font: 700 12px/1.3 var(--font-sans); letter-spacing: 0.04em; transform: rotate(-8deg); box-shadow: 0 2px 6px rgba(0,0,0,0.5); }
 
   .divider {
     height: 1px;
-    background: linear-gradient(to right, transparent, rgba(212,168,67,0.3), transparent);
+    background: linear-gradient(to right, transparent, rgba(var(--accent-rgb),0.3), transparent);
   }
 
   .score-section {
@@ -191,7 +195,7 @@
   }
 
   .score-label {
-    font-size: 0.7rem;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 0.15em;
     text-transform: uppercase;
@@ -205,25 +209,23 @@
   }
 
   .score-val {
-    font-family: var(--font-serif);
-    font-size: 1.8rem;
+    font-size: 24px;
     font-weight: 800;
-    color: var(--accent-gold);
+    color: var(--accent);
   }
 
   .score-separator {
     color: var(--text-secondary);
-    font-size: 1rem;
+    font-size: 12px;
   }
 
   .btn {
     width: 100%;
     padding: 10px;
-    border: 1px solid var(--accent-gold);
+    border: 1px solid var(--accent);
     background: transparent;
-    color: var(--accent-gold);
-    font-family: var(--font-serif);
-    font-size: 0.95rem;
+    color: var(--accent);
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.1em;
     border-radius: 6px;
@@ -232,26 +234,26 @@
   }
 
   .btn:hover {
-    background: var(--accent-gold);
+    background: var(--accent);
     color: var(--bg);
-    box-shadow: 0 0 20px rgba(212,168,67,0.4);
+    box-shadow: 0 0 20px rgba(var(--accent-rgb),0.4);
   }
 
   .btn:active { transform: scale(0.97); }
 
   /* nobody can make five any more: the draw button lights up */
-  .btn.hot { background: var(--accent-gold); color: var(--bg); animation: hot 1.6s ease-in-out infinite; }
-  @keyframes hot { 50% { box-shadow: 0 0 18px rgba(212,168,67,0.7); } }
+  .btn.hot { background: var(--accent); color: var(--bg); animation: hot 1.6s ease-in-out infinite; }
+  @keyframes hot { 50% { box-shadow: 0 0 18px rgba(var(--accent-rgb),0.7); } }
   @media (prefers-reduced-motion: reduce) { .btn.hot { animation: none; } }
 
   .btn.secondary {
-    border-color: rgba(212,168,67,0.3);
+    border-color: rgba(var(--accent-rgb),0.3);
     color: var(--text-secondary);
-    font-size: 0.8rem;
+    font-size: 12px;
   }
 
   .btn.secondary:hover {
-    background: rgba(212,168,67,0.1);
+    background: rgba(var(--accent-rgb),0.1);
     color: var(--text-primary);
     box-shadow: none;
   }
@@ -261,7 +263,7 @@
     position: relative;
     padding: 24px;
     background: var(--panel-bg);
-    border: 1px solid rgba(212,168,67,0.2);
+    border: 1px solid rgba(var(--accent-rgb),0.2);
     border-radius: 12px;
     backdrop-filter: blur(6px);
   }
@@ -319,6 +321,9 @@
     100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   }
 
+  /* default stones are the ZEST photos. A user's own photo sets --stone-black-img / --stone-white-img (profile.js); removing the variable restores ZEST. */
+  .player-stone.black, .stone-choice-img.black { background-image: var(--stone-black-img, url(img/stone-black.jpg)); }
+  .player-stone.white, .stone-choice-img.white { background-image: var(--stone-white-img, url(img/stone-white.jpg)); }
   /* boss (원준): the AI's stone color shows the boss's face */
   /* boss rage (after the table flip, that one game only): the AI's stones wear the angry photo */
   body.boss-1.rage .stone.black-stone, body.boss-1.rage .modal-stone.black-stone, body.boss-1.rage .player-stone.black,
@@ -327,7 +332,7 @@
   body.boss-2 .stone.white-stone, body.boss-2 .modal-stone.white-stone, body.boss-2 .player-stone.white { background-image: url(img/wonjun-white.jpg) !important; background-size: cover !important; background-position: center !important; }
 
   .stone.black-stone {
-    background-image: url(img/stone-black.jpg);
+    background-image: var(--stone-black-img, url(img/stone-black.jpg));
     background-size: cover;
     background-position: center top;
     box-shadow:
@@ -337,7 +342,7 @@
   }
 
   .stone.white-stone {
-    background-image: url(img/stone-white.jpg);
+    background-image: var(--stone-white-img, url(img/stone-white.jpg));
     background-size: cover;
     background-position: center top;
     box-shadow:
@@ -377,14 +382,14 @@
   }
 
   .ghost-stone.black-ghost {
-    background-image: url(img/stone-black.jpg);
+    background-image: var(--stone-black-img, url(img/stone-black.jpg));
     background-size: cover;
     background-position: center top;
     border: 2px solid rgba(0,0,0,0.5);
   }
 
   .ghost-stone.white-ghost {
-    background-image: url(img/stone-white.jpg);
+    background-image: var(--stone-white-img, url(img/stone-white.jpg));
     background-size: cover;
     background-position: center top;
     border: 2px solid rgba(220,220,220,0.5);
@@ -394,7 +399,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(10,5,0,0.75);
+    background: rgba(var(--scrim),0.75);
     backdrop-filter: blur(4px);
     display: flex;
     align-items: center;
@@ -411,12 +416,12 @@
   }
 
   .modal {
-    background: linear-gradient(160deg, #2a1c0a, #1a1005);
-    border: 1px solid var(--accent-gold);
+    background: var(--modal-bg);
+    border: 1px solid var(--accent);
     border-radius: 16px;
     padding: 40px 48px;
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(212,168,67,0.15);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(var(--accent-rgb),0.15);
     transform: scale(0.85);
     transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
   }
@@ -439,7 +444,7 @@
   }
 
   .modal-stone.black-stone {
-    background-image: url(img/stone-black.jpg);
+    background-image: var(--stone-black-img, url(img/stone-black.jpg));
     background-size: cover;
     background-position: center top;
     box-shadow: 0 4px 20px rgba(0,0,0,0.8), 0 0 30px rgba(255,220,50,0.4);
@@ -447,7 +452,7 @@
   }
 
   .modal-stone.white-stone {
-    background-image: url(img/stone-white.jpg);
+    background-image: var(--stone-white-img, url(img/stone-white.jpg));
     background-size: cover;
     background-position: center top;
     box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 0 30px rgba(255,220,50,0.4);
@@ -455,24 +460,22 @@
   }
 
   .modal-title {
-    font-family: var(--font-serif);
-    font-size: 1.1rem;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 0.2em;
     margin-bottom: 4px;
   }
 
   .modal-winner {
-    font-family: var(--font-serif);
-    font-size: 2rem;
+    font-size: 24px;
     font-weight: 800;
-    color: var(--accent-gold);
+    color: var(--accent);
     margin-bottom: 8px;
-    text-shadow: 0 2px 20px rgba(212,168,67,0.5);
+    text-shadow: 0 2px 20px rgba(var(--accent-rgb),0.5);
   }
 
   .modal-sub {
-    font-size: 0.85rem;
+    font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 28px;
   }
@@ -495,7 +498,7 @@
     gap: 8px;
     justify-content: center;
     margin-top: 10px;
-    font-size: 0.8rem;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 0.1em;
   }
@@ -519,7 +522,7 @@
   .select-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(10,5,0,0.85);
+    background: rgba(var(--scrim),0.85);
     backdrop-filter: blur(6px);
     display: flex;
     align-items: center;
@@ -531,27 +534,26 @@
   }
   .select-overlay.show { opacity: 1; pointer-events: all; }
   .select-modal {
-    background: linear-gradient(160deg, #2a1c0a, #1a1005);
-    border: 1px solid var(--accent-gold);
+    background: var(--modal-bg);
+    border: 1px solid var(--accent);
     border-radius: 16px;
     padding: 36px 44px;
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(212,168,67,0.15);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(var(--accent-rgb),0.15);
     transform: scale(0.85);
     transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
     min-width: 320px;
   }
   .select-overlay.show .select-modal { transform: scale(1); }
   .select-title {
-    font-family: var(--font-serif);
-    font-size: 1.5rem;
+    font-size: 24px;
     font-weight: 800;
-    color: var(--accent-gold);
+    color: var(--accent);
     margin-bottom: 6px;
     letter-spacing: 0.08em;
   }
   .select-sub {
-    font-size: 0.8rem;
+    font-size: 12px;
     color: var(--text-secondary);
     letter-spacing: 0.12em;
     margin-bottom: 28px;
@@ -567,38 +569,38 @@
     border-radius: 12px;
     border: 2px solid transparent;
     transition: all 0.2s ease;
-    background: rgba(255,255,255,0.03);
+    background: var(--inset-bg);
   }
   .stone-choice:hover {
-    border-color: var(--accent-gold);
-    background: rgba(212,168,67,0.08);
+    border-color: var(--accent);
+    background: rgba(var(--accent-rgb),0.08);
     transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(212,168,67,0.15);
+    box-shadow: 0 8px 24px rgba(var(--accent-rgb),0.15);
   }
   .stone-choice-img {
     width: 72px; height: 72px; flex: none; aspect-ratio: 1;
     border-radius: 50%;
-    object-fit: cover;
-    object-position: center top;
+    background-size: cover;
+    background-position: center top;
     box-shadow: 0 4px 16px rgba(0,0,0,0.6);
-    border: 3px solid rgba(212,168,67,0.4);
+    border: 3px solid rgba(var(--accent-rgb),0.4);
     transition: all 0.2s;
   }
   .stone-choice:hover .stone-choice-img {
-    border-color: var(--accent-gold);
-    box-shadow: 0 4px 24px rgba(212,168,67,0.4);
+    border-color: var(--accent);
+    box-shadow: 0 4px 24px rgba(var(--accent-rgb),0.4);
   }
-  .stone-choice-label { font-family: var(--font-serif); font-size: 0.95rem; font-weight: 700; color: var(--text-primary); letter-spacing: 0.08em; }
-  .stone-choice-tag { font-size: 0.7rem; color: var(--text-secondary); letter-spacing: 0.1em; }
+  .stone-choice-label { font-size: 12px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.08em; }
+  .stone-choice-tag { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.1em; }
   .ai-thinking {
     display: none; align-items: center; gap: 6px;
     justify-content: center; margin-top: 8px;
-    font-size: 0.78rem; color: var(--accent-gold); letter-spacing: 0.1em;
+    font-size: 12px; color: var(--accent); letter-spacing: 0.1em;
   }
   .ai-thinking.show { display: flex; }
   .ai-dot {
     width: 5px; height: 5px; border-radius: 50%;
-    background: var(--accent-gold);
+    background: var(--accent);
     animation: aiPulse 1.2s ease-in-out infinite;
   }
   .ai-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -608,17 +610,17 @@
     30% { transform: scale(1.4); opacity: 1; }
   }
   .player-badge {
-    display: inline-block; font-size: 0.6rem; font-weight: 600;
+    display: inline-block; font-size: 12px; font-weight: 600;
     letter-spacing: 0.12em; padding: 2px 6px; border-radius: 4px;
     margin-left: 4px; vertical-align: middle;
   }
-  .badge-human { background: rgba(212,168,67,0.2); color: var(--accent-gold); border: 1px solid rgba(212,168,67,0.4); }
-  .badge-ai { background: rgba(100,180,255,0.15); color: #6ab4ff; border: 1px solid rgba(100,180,255,0.3); }
+  .badge-human { background: rgba(var(--accent-rgb),0.2); color: var(--accent); border: 1px solid rgba(var(--accent-rgb),0.4); }
+  .badge-ai { background: var(--inset-bg); color: var(--text-secondary); border: 1px solid var(--text-secondary); }
 
   /* Mode selection overlay */
   .mode-overlay {
     position: fixed; inset: 0;
-    background: rgba(10,5,0,0.92);
+    background: rgba(var(--scrim),0.92);
     backdrop-filter: blur(8px);
     display: flex; align-items: center; justify-content: center;
     z-index: 300; opacity: 0; pointer-events: none;
@@ -626,45 +628,44 @@
   }
   .mode-overlay.show { opacity: 1; pointer-events: all; }
   .mode-modal {
-    background: linear-gradient(160deg, #2a1c0a, #1a1005);
-    border: 1px solid var(--accent-gold);
+    background: var(--modal-bg);
+    border: 1px solid var(--accent);
     border-radius: 16px;
     padding: 40px 48px;
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(212,168,67,0.15);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(var(--accent-rgb),0.15);
     transform: scale(0.85);
     transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
     min-width: 340px;
   }
   .mode-overlay.show .mode-modal { transform: scale(1); }
   .mode-title {
-    font-family: var(--font-serif);
-    font-size: 1.8rem; font-weight: 800;
-    color: var(--accent-gold); margin-bottom: 4px; letter-spacing: 0.08em;
+    font-size: 24px; font-weight: 800;
+    color: var(--accent); margin-bottom: 4px; letter-spacing: 0.08em;
   }
-  .mode-subtitle { font-size: 0.78rem; color: var(--text-secondary); letter-spacing: 0.15em; margin-bottom: 32px; }
+  .mode-subtitle { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.15em; margin-bottom: 32px; }
   .mode-cards { display: flex; gap: 16px; justify-content: center; }
   .mode-card {
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     cursor: pointer; padding: 20px 20px; border-radius: 12px;
-    border: 2px solid rgba(212,168,67,0.2);
+    border: 2px solid rgba(var(--accent-rgb),0.2);
     background: rgba(255,255,255,0.03);
     transition: all 0.2s ease; width: 130px;
   }
   .mode-card:hover {
-    border-color: var(--accent-gold);
-    background: rgba(212,168,67,0.08);
+    border-color: var(--accent);
+    background: rgba(var(--accent-rgb),0.08);
     transform: translateY(-4px);
-    box-shadow: 0 8px 24px rgba(212,168,67,0.2);
+    box-shadow: 0 8px 24px rgba(var(--accent-rgb),0.2);
   }
-  .mode-icon { font-size: 2.4rem; line-height: 1; }
-  .mode-card-title { font-family: var(--font-serif); font-size: 1rem; font-weight: 700; color: var(--text-primary); }
-  .mode-card-desc { font-size: 0.68rem; color: var(--text-secondary); letter-spacing: 0.08em; line-height: 1.4; text-align: center; }
+  .mode-icon { font-size: 36px; line-height: 1; }
+  .mode-card-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+  .mode-card-desc { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.08em; line-height: 1.4; text-align: center; }
 
   /* Room overlay */
   .room-overlay {
     position: fixed; inset: 0;
-    background: rgba(10,5,0,0.92);
+    background: rgba(var(--scrim),0.92);
     backdrop-filter: blur(8px);
     display: flex; align-items: center; justify-content: center;
     z-index: 300; opacity: 0; pointer-events: none;
@@ -672,69 +673,67 @@
   }
   .room-overlay.show { opacity: 1; pointer-events: all; }
   .room-modal {
-    background: linear-gradient(160deg, #2a1c0a, #1a1005);
-    border: 1px solid var(--accent-gold);
+    background: var(--modal-bg);
+    border: 1px solid var(--accent);
     border-radius: 16px; padding: 36px 44px;
     text-align: center;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(212,168,67,0.15);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(var(--accent-rgb),0.15);
     transform: scale(0.85);
     transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
     min-width: 320px;
   }
   .room-overlay.show .room-modal { transform: scale(1); }
-  .room-title { font-family: var(--font-serif); font-size: 1.4rem; font-weight: 800; color: var(--accent-gold); margin-bottom: 6px; }
-  .room-subtitle { font-size: 0.78rem; color: var(--text-secondary); letter-spacing: 0.1em; margin-bottom: 24px; }
+  .room-title { font-size: 24px; font-weight: 800; color: var(--accent); margin-bottom: 6px; }
+  .room-subtitle { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.1em; margin-bottom: 24px; }
   .room-code-box {
-    background: rgba(0,0,0,0.4);
-    border: 2px solid var(--accent-gold);
-    border-radius: 10px; padding: 16px 24px;
-    font-family: var(--font-serif); font-size: 2.4rem;
-    font-weight: 800; color: var(--accent-gold);
+    background: var(--inset-bg);
+    border: 2px solid var(--accent);
+    border-radius: 10px; padding: 16px 24px; font-size: 36px;
+    font-weight: 800; color: var(--accent);
     letter-spacing: 0.25em; text-align: center;
     margin-bottom: 10px; cursor: pointer;
     transition: all 0.2s;
   }
-  .room-code-box:hover { background: rgba(212,168,67,0.08); }
-  .room-code-hint { font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 20px; }
-  .room-code-hint span { color: var(--accent-gold); }
+  .room-code-box:hover { background: rgba(var(--accent-rgb),0.08); }
+  .room-code-hint { font-size: 12px; color: var(--text-secondary); margin-bottom: 20px; }
+  .room-code-hint span { color: var(--accent); }
   .room-input {
     width: 100%; padding: 12px 16px; margin-bottom: 16px;
-    background: rgba(0,0,0,0.4); border: 1px solid rgba(212,168,67,0.4);
-    border-radius: 8px; color: var(--text-primary);
-    font-family: var(--font-serif); font-size: 1.6rem;
+    background: var(--inset-bg); border: 1px solid rgba(var(--accent-rgb),0.4);
+    border-radius: 8px; color: var(--text-primary); font-size: 24px;
     font-weight: 800; letter-spacing: 0.3em; text-align: center;
     text-transform: uppercase; outline: none;
     transition: border-color 0.2s;
   }
-  .room-input:focus { border-color: var(--accent-gold); }
-  .room-input::placeholder { color: rgba(160,144,96,0.4); font-size: 1.2rem; letter-spacing: 0.1em; }
-  .room-status { font-size: 0.78rem; margin-bottom: 12px; min-height: 20px; color: var(--text-secondary); }
-  .room-status.ok { color: #6dcc8a; }
-  .room-status.err { color: #ff7070; }
-  .back-btn { font-size: 0.75rem; color: var(--text-secondary); background: none; border: none; cursor: pointer; margin-top: 12px; text-decoration: underline; }
+  .room-input:focus { border-color: var(--accent); }
+  .room-input::placeholder { color: var(--text-secondary); opacity: 0.6; font-size: 12px; letter-spacing: 0.1em; }
+  .room-status { font-size: 12px; margin-bottom: 12px; min-height: 20px; color: var(--text-secondary); }
+  .room-status.ok { color: var(--accent); }
+  .room-status.err { color: var(--danger); }
+  .back-btn { font-size: 12px; color: var(--text-secondary); background: none; border: none; cursor: pointer; margin-top: 12px; text-decoration: underline; }
   .back-btn:hover { color: var(--text-primary); }
   /* Online game badge */
   .online-badge {
-    display: inline-block; font-size: 0.6rem; font-weight: 600; letter-spacing: 0.12em;
+    display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
     padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;
-    background: rgba(100,220,120,0.15); color: #6dcc8a; border: 1px solid rgba(100,220,120,0.3);
+    background: rgba(var(--accent-rgb),0.12); color: var(--accent); border: 1px solid rgba(var(--accent-rgb),0.4);
   }
   .conn-status {
     display: flex; align-items: center; gap: 5px;
-    font-size: 0.7rem; justify-content: center; margin-top: 6px;
+    font-size: 12px; justify-content: center; margin-top: 6px;
   }
-  .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: #6dcc8a; animation: connPulse 2s ease-in-out infinite; }
-  .conn-dot.offline { background: #ff7070; animation: none; }
+  .conn-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: connPulse 2s ease-in-out infinite; }
+  .conn-dot.offline { background: var(--danger); animation: none; }
   @keyframes connPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
   /* Team mode */
-  .team-name { font-size: 1.1rem; letter-spacing: 0.05em; text-transform: none; }
+  .team-name { font-size: 24px; letter-spacing: 0.05em; text-transform: none; }
   .team-cols { display: flex; gap: 12px; margin: 12px 0 16px; }
-  .team-col { flex: 1; min-width: 130px; border: 1px solid rgba(212,168,67,0.3); border-radius: 10px; padding: 10px; }
-  .team-col-title { font-family: var(--font-serif); font-weight: 700; color: var(--accent-gold); margin-bottom: 6px; }
-  .team-col ul { list-style: none; margin: 0 0 10px; padding: 0; min-height: 66px; font-size: 0.85rem; text-align: left; }
+  .team-col { flex: 1; min-width: 130px; border: 1px solid rgba(var(--accent-rgb),0.3); border-radius: 10px; padding: 10px; }
+  .team-col-title { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+  .team-col ul { list-style: none; margin: 0 0 10px; padding: 0; min-height: 66px; font-size: 12px; text-align: left; }
   .team-col li { padding: 2px 0; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .team-col li.me { color: var(--accent-gold); font-weight: 700; }
+  .team-col li.me { color: var(--accent); font-weight: 700; }
   .team-col li.off { opacity: 0.4; }
   .team-col .btn:disabled, #team-start:disabled { opacity: 0.4; cursor: not-allowed; }
   .panel .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
@@ -742,9 +741,9 @@
   /* a11y helpers */
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   button.mode-card, button.stone-choice, button.room-code-box, .level-chip { font: inherit; color: inherit; }
-  button.room-code-box { color: var(--accent-gold); }
+  button.room-code-box { color: var(--accent); font-size: 36px; }
   button:focus-visible, .level-chip:focus-visible { outline: 2px solid var(--accent-light); outline-offset: 2px; }
-  .board-surface:focus-within { outline: 2px solid var(--accent-gold); outline-offset: 3px; }
+  .board-surface:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
   .board-click:focus { outline: none; }
   .kb-cursor { position: absolute; width: var(--stone-size); height: var(--stone-size); border: 2px dashed var(--accent-light); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; display: none; }
   /* hidden overlays must not be focusable */
@@ -752,9 +751,9 @@
   .overlay.show, .select-overlay.show, .mode-overlay.show, .room-overlay.show { visibility: visible; transition: opacity 0.4s ease, visibility 0s; }
   /* difficulty chips */
   .level-choices { display: flex; gap: 8px; justify-content: center; margin-bottom: 18px; }
-  .level-chip { padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(212,168,67,0.3); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.85rem; transition: all 0.2s ease; }
+  .level-chip { padding: 8px 16px; border-radius: 999px; border: 1px solid rgba(var(--accent-rgb),0.3); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; transition: all 0.2s ease; }
   .level-chip:hover { color: var(--text-primary); }
-  .level-chip[aria-checked="true"] { background: rgba(212,168,67,0.2); border-color: var(--accent-gold); color: var(--accent-gold); font-weight: 700; }
+  .level-chip[aria-checked="true"] { background: rgba(var(--accent-rgb),0.2); border-color: var(--accent); color: var(--accent); font-weight: 700; }
 
   /* `transition: all` on children would animate inherited visibility and block focus for 0.2s */
   .overlay *, .select-overlay *, .mode-overlay *, .room-overlay * { transition-property: background, color, border-color, box-shadow, transform, opacity; }
@@ -762,19 +761,42 @@
   .actions { display: contents; } /* desktop: buttons stay in the panel column */
   .actions[hidden] { display: none; } /* a room vote replaces the buttons */
   /* room vote: takes the action buttons' place in the panel (never over or under the board) */
-  .vote-box { border: 1px solid var(--accent-gold); border-radius: 6px; padding: 8px; text-align: center; font-size: 0.8rem; line-height: 1.5; color: var(--text-primary); background: rgba(212,168,67,0.08); }
+  .vote-box { border: 1px solid var(--accent); border-radius: 6px; padding: 8px; text-align: center; font-size: 12px; line-height: 1.5; color: var(--text-primary); background: rgba(var(--accent-rgb),0.08); }
   .vote-box[hidden] { display: none; }
   .vote-btns { display: flex; gap: 8px; justify-content: center; margin-top: 6px; }
   .vote-btns[hidden] { display: none; }
   .vote-btns .level-chip { flex: 1 1 0; padding: 6px 8px; }
-  .vote-note { font-size: 0.78rem; text-align: center; color: #6dcc8a; }
+  .vote-note { font-size: 12px; text-align: center; color: var(--accent); }
   .vote-note:empty { display: none; }
+
+  :root[data-theme="light"] :is(.modal, .select-modal, .mode-modal, .room-modal) { box-shadow: 0 20px 60px rgba(0,0,0,0.25), 0 0 40px rgba(var(--accent-rgb),0.12); }
+  /* header tools (theme, profile): page top-right */
+  .header-tools { position: absolute; top: 12px; right: 12px; z-index: 2; display: flex; gap: 8px; }
+  .header-tools.above { z-index: 301; } /* over the mode-select overlay (z 300) */
+  .icon-btn { width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgba(var(--accent-rgb),0.4); background: var(--panel-bg) center/cover no-repeat; color: var(--text-primary); font-size: 24px; line-height: 1; cursor: pointer; }
+  .icon-btn:hover { border-color: var(--accent); }
+  #theme-btn::before { content: '☾'; }
+  :root[data-theme="light"] #theme-btn::before { content: '☀'; }
+  .profile-wrap { position: relative; }
+  #profile-btn:not(.has-photo)::before { content: '👤'; }
+  .profile-menu { position: absolute; right: 0; top: 48px; min-width: 200px; display: flex; flex-direction: column; padding: 6px; background: var(--modal-bg); border: 1px solid rgba(var(--accent-rgb),0.4); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.35); }
+  .profile-menu[hidden] { display: none; }
+  .profile-menu button { font: inherit; font-size: 12px; text-align: left; padding: 10px 12px; border: none; border-radius: 6px; background: none; color: var(--text-primary); cursor: pointer; }
+  .profile-menu button:hover { background: rgba(var(--accent-rgb),0.12); }
+  #pm-hide::before { content: '☐ '; }
+  #pm-hide[aria-pressed="true"]::before { content: '☑ '; color: var(--accent); }
+  .pm-msg { font-size: 12px; color: var(--danger); padding: 0 12px; }
+  .pm-msg:empty { display: none; }
+  .team-col li { display: flex; align-items: center; gap: 4px; }
+  .team-col li .tl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .team-col li .av-off { flex: none; padding: 1px 6px; font-size: 12px; line-height: 1.3; color: var(--text-secondary); border-color: rgba(var(--accent-rgb),0.3); }
 
   /* Mobile / narrow: stack layout, drop mirror panel */
   @media (max-width: 900px) {
     body { justify-content: flex-start; }
-    h1 { font-size: 2rem; }
-    header { margin-bottom: 10px; }
+    h1 { font-size: 24px; }
+    header { margin-bottom: 10px; width: 100%; max-width: 480px; text-align: left; position: relative; }
+    .header-tools { top: 4px; right: 0; }
     .game-layout { flex-direction: column; align-items: center; gap: 12px; width: 100%; }
     /* panel: players stacked on the left, score + reset on the right, action buttons below */
     .panel { width: 100%; max-width: 480px; display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "b s" "w r" "a a"; align-items: center; gap: 8px; padding: 10px 12px; }
@@ -782,8 +804,8 @@
     .actions { grid-area: a; display: flex; gap: 8px; }
     .vote-box { grid-area: a; }
     .vote-note { grid-column: 1 / -1; }
-    .actions .btn { letter-spacing: 0; white-space: nowrap; font-size: 0.85rem; padding: 8px 4px; }
-    h1 span { letter-spacing: 0.12em; font-size: 0.85rem; }
+    .actions .btn { letter-spacing: 0; white-space: nowrap; font-size: 12px; padding: 8px 4px; }
+    h1 span { letter-spacing: 0.12em; font-size: 12px; }
     .player-label { display: none; }
     .player-name { white-space: normal; overflow-wrap: anywhere; }
     .player-name .player-badge { white-space: nowrap; letter-spacing: 0; }
@@ -791,7 +813,7 @@
     .panel .divider { display: none; }
     .panel .btn { width: auto; flex: 1 1 0; padding: 8px; }
     .player-card { padding: 8px 22px 8px 8px; min-width: 0; }
-    .player-name { font-size: 0.9rem; }
+    .player-name { font-size: 12px; }
     .score-section { flex: 0 0 auto; }
     .panel .btn { min-width: 0; }
     .board-wrap { padding: 12px; }
@@ -806,6 +828,21 @@
 <body>
 
 <header>
+  <div class="header-tools">
+    <button type="button" class="icon-btn" id="theme-btn" aria-label="다크 모드" aria-pressed="true" onclick="toggleTheme()"></button>
+    <div class="profile-wrap" id="profile-wrap" hidden>
+      <button type="button" class="icon-btn" id="profile-btn" aria-label="프로필" aria-haspopup="true" aria-expanded="false" aria-controls="profile-menu" onclick="toggleProfileMenu()"></button>
+      <div class="profile-menu" id="profile-menu" hidden>
+        <div id="pm-gsi"></div>
+        <button type="button" id="pm-login" onclick="profileLogin()" hidden>Google 로그인</button>
+        <button type="button" onclick="document.getElementById('pm-file').click()">사진 올리기</button>
+        <input type="file" accept="image/*" id="pm-file" hidden onchange="profileUpload(this)">
+        <button type="button" id="pm-clear" onclick="Profile.clearUpload()">사진 지우기</button>
+        <button type="button" id="pm-hide" aria-pressed="false" onclick="Profile.setHideOthers(!Profile.hideOthers())">다른 사람 사진 숨기기</button>
+        <div class="pm-msg" id="pm-msg" role="status"></div>
+      </div>
+    </div>
+  </div>
   <h1>ZESTMOK<span>오목 · made by builtkwon</span></h1>
 </header>
 
@@ -814,7 +851,7 @@
   <div class="panel">
     <div class="player-card" id="card-black">
       <div style="display:flex;align-items:center">
-        <div class="player-stone black" style="background-image:url(img/stone-black.jpg);background-size:cover;background-position:center top;background-color:transparent;box-shadow:0 2px 6px rgba(0,0,0,0.5);"></div>
+        <div class="player-stone black"></div>
         <div>
           <div class="player-name" id="name-black">흑돌 <span class="player-badge" id="badge-black"></span></div>
           <div class="player-label" id="label-black">흑돌 · 선공</div>
@@ -827,7 +864,7 @@
 
     <div class="player-card" id="card-white">
       <div style="display:flex;align-items:center">
-        <div class="player-stone white" style="background-image:url(img/stone-white.jpg);background-size:cover;background-position:center top;background-color:transparent;box-shadow:0 2px 6px rgba(0,0,0,0.5);"></div>
+        <div class="player-stone white"></div>
         <div>
           <div class="player-name" id="name-white">백돌 <span class="player-badge" id="badge-white"></span></div>
           <div class="player-label" id="label-white">백돌 · 후공</div>
@@ -973,12 +1010,12 @@
     <div class="select-sub">ZEST로 플레이할 돌을 선택하세요</div>
     <div class="stone-choices">
       <button type="button" class="stone-choice" onclick="selectColor(1)">
-        <img class="stone-choice-img" id="choice-black-img" src="" alt="흑돌">
+        <div class="stone-choice-img black" aria-hidden="true"></div>
         <div class="stone-choice-label">흑돌</div>
         <div class="stone-choice-tag" id="choice-black-tag">선공 · 흑돌</div>
       </button>
       <button type="button" class="stone-choice" onclick="selectColor(2)">
-        <img class="stone-choice-img" id="choice-white-img" src="" alt="백돌">
+        <div class="stone-choice-img white" aria-hidden="true"></div>
         <div class="stone-choice-label">백돌</div>
         <div class="stone-choice-tag" id="choice-white-tag">후공 · 백돌</div>
       </button>
@@ -1004,6 +1041,7 @@
 
 <script src="ai.js"></script>
 <script src="team.js"></script>
+<script src="profile.js"></script>
 <script>
 const BOARD_SIZE = 15;
 const CELL = 40;
@@ -1024,23 +1062,6 @@ let aiThinking = false;
 
 // Game mode: 'ai' | 'team' (방 만들기: 1:1 ~ 3:1)
 let gameMode = 'ai';
-
-const stoneImgs = {};
-(function() {
-  const tmpDiv = document.createElement('div');
-  tmpDiv.className = 'stone black-stone';
-  tmpDiv.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px';
-  document.body.appendChild(tmpDiv);
-  const blackBg = getComputedStyle(tmpDiv).backgroundImage;
-  tmpDiv.className = 'stone white-stone';
-  const whiteBg = getComputedStyle(tmpDiv).backgroundImage;
-  document.body.removeChild(tmpDiv);
-  function extractUrl(bg) { return bg.replace(/^url\(["']?/, '').replace(/["']?\)$/, ''); }
-  stoneImgs[1] = extractUrl(blackBg);
-  stoneImgs[2] = extractUrl(whiteBg);
-  document.getElementById('choice-black-img').src = stoneImgs[1];
-  document.getElementById('choice-white-img').src = stoneImgs[2];
-})();
 
 const canvas = document.getElementById('board-canvas');
 const clickCanvas = document.getElementById('board-click');
@@ -1073,6 +1094,7 @@ function selectRule(k) {
   RULE = k === 'b' ? {k, per: 5000} : {k, main: 0};
   renderTc();
   hideOverlay('rule-overlay');
+  aiStones(false);
   if (gameMode === 'ai') showOverlay('select-overlay'); else teamEntry();
 }
 function ruleBack() { hideOverlay('rule-overlay'); showOverlay('mode-overlay'); }
@@ -1094,7 +1116,11 @@ const OVERLAYS = '.overlay.show,.select-overlay.show,.mode-overlay.show,.room-ov
 let lastFocus = null;
 function syncInert() {
   const open = document.querySelectorAll(OVERLAYS).length > 0;
-  document.querySelector('header').inert = open;
+  // the theme/profile tools stay usable over the first screen (mode select only); any other overlay blocks them
+  const modeOnly = open && [...document.querySelectorAll(OVERLAYS)].every(o => o.id === 'mode-overlay');
+  document.querySelector('header h1').inert = open;
+  const tools = document.querySelector('.header-tools');
+  tools.inert = open && !modeOnly; tools.classList.toggle('above', modeOnly);
   document.querySelector('.game-layout').inert = open;
 }
 function showOverlay(id) {
@@ -1112,6 +1138,7 @@ function hideOverlay(id) {
 function announce(msg) { document.getElementById('sr-live').textContent = msg; }
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  if (!document.getElementById('profile-menu').hidden) return toggleProfileMenu(false);
   const on = (id) => document.getElementById(id).classList.contains('show');
   if (on('overlay')) closeOverlay();
   else if (on('team-overlay')) teamBack();
@@ -1185,7 +1212,7 @@ function tmSid() {
 function tmBase(role, code) {
   return {role, code, me: tmSid(), name: TeamLogic.cleanName(document.getElementById('team-name').value) || 'Player',
     peer: null, conn: null, conns: {}, seen: {}, wipe: {}, until: {}, players: [], started: false, turn: null, result: null,
-    hostId: '', rule: RULE, lastSeen: Date.now(), hb: null, tick: null, rejoin: null, migr: null, busy: false, joined: false, sig: '', ann: '', endShown: false, votes: {}, vote: null, vq: null};
+    hostId: '', av: {}, avAt: {}, stones: '', rule: RULE, lastSeen: Date.now(), hb: null, tick: null, rejoin: null, migr: null, busy: false, joined: false, sig: '', ann: '', endShown: false, votes: {}, vote: null, vq: null};
 }
 const tmMe = () => TM && TM.players.find(p => p.id === TM.me);
 const tmMyTeam = () => { const m = tmMe(); return m ? m.team : 1; };
@@ -1234,6 +1261,7 @@ function tmLeave() {
   document.getElementById('team-banner').textContent = ''; tmVoteRender();
   document.getElementById('conn-status').style.display = 'none';
   clockStop();
+  if (hasProfile()) { Profile.setStone(1, null); Profile.setStone(2, null); }
 }
 function copyTeamCode() {
   const el = document.getElementById('team-code-display'), code = TM && TM.code;
@@ -1247,6 +1275,7 @@ function teamCreate(team) {
   TM = tmBase('host', generateCode());
   TM.hostId = TM.me;
   TM.players = [{id: TM.me, name: TM.name, team, online: true}];
+  tmHookProfile(); if (TeamLogic.validAvatar(tmPhoto())) TM.av[TM.me] = tmPhoto();
   initBoard(); scores = {1: 0, 2: 0}; gameOver = false; updateScores();
   tmStatus('방 만드는 중...');
   tmOpenHostPeer(true);
@@ -1294,6 +1323,7 @@ function tmHostData(c, d) {
   TM.seen[id] = Date.now();
   if (d.type === 'team') tmHostPick(id, d.team);
   else if (d.type === 'move') tmHostMove(id, d);
+  else if (d.type === 'avatar') tmHostAvatar(id, d.src);
   else if (d.type === 'vote-start') tmHostVoteStart(id, d.kind);
   else if (d.type === 'vote-reply') tmHostVoteReply(id, d.ok === true);
 }
@@ -1312,6 +1342,7 @@ function tmHostHello(c, d) {
   if (old && old !== c) { try { old.close(); } catch (e) {} }
   tmUpdateWipe();
   tmBroadcast();
+  for (const x of TM.players) if (TM.av[x.id]) { try { c.send({type: 'avatar', id: x.id, src: TM.av[x.id]}); } catch (e) {} } // not in snap: 32KB each
 }
 function tmHostDrop(c) {
   const id = c._tid;
@@ -1321,6 +1352,31 @@ function tmHostDrop(c) {
   if (p) { if (TM.started) p.online = false; else TM.players = TM.players.filter(x => x !== p); }
   tmUpdateWipe(); tmHostVoteStep();
   tmBroadcast();
+}
+// src null = photo removed. Host-off players stay off until the room ends.
+// shortcut: avatarOff lives on the player, so a lobby leave+rejoin (new player entry) clears it; host can turn it off again.
+function tmHostAvatar(id, src) {
+  const p = TM.players.find(x => x.id === id);
+  if (!p || p.avatarOff || (src !== null && !TeamLogic.validAvatar(src)) || (TM.av[id] || null) === src) return;
+  // at most 1 relay per id per second; the latest change inside the window is sent when it ends (the matte lands ~0.2 s after the upload)
+  const now = Date.now(), wait = 1000 - (now - (TM.avAt[id] || 0));
+  if (wait > 0) {
+    const q = TM.avNext || (TM.avNext = {});
+    if (!(id in q)) setTimeout(() => { const v = q[id]; delete q[id]; if (TM && TM.role === 'host') tmHostAvatar(id, v); }, wait);
+    q[id] = src; return;
+  }
+  TM.avAt[id] = now;
+  tmAvatarRelay(id, src);
+}
+function tmAvatarRelay(id, src) {
+  if (src) TM.av[id] = src; else delete TM.av[id];
+  for (const k of Object.keys(TM.conns)) { try { TM.conns[k].send({type: 'avatar', id, src}); } catch (e) {} }
+  if (TM.started) tmStones(); else tmRender(); // lobby: show the host's "사진 끄기" button
+}
+function tmAvatarOff(id) {
+  const p = TM && TM.role === 'host' && TM.players.find(x => x.id === id);
+  if (!p || id === TM.me) return;
+  p.avatarOff = true; tmAvatarRelay(id, null); tmBroadcast();
 }
 function tmHostPick(id, team) {
   const p = TM.players.find(x => x.id === id);
@@ -1462,6 +1518,7 @@ function tmSnap() {
 }
 function tmBroadcast() {
   if (TM.vote && (gameOver || !TM.started)) tmHostVoteEnd();
+  for (const k of Object.keys(TM.av)) if (!TM.players.some(p => p.id === k)) delete TM.av[k]; // player removed
   const s = tmSnap();
   for (const id of Object.keys(TM.conns)) { try { TM.conns[id].send(s); } catch (e) {} }
   tmRender();
@@ -1493,7 +1550,8 @@ function teamJoin() {
   tmStatus('연결 중...');
   const t = setTimeout(() => { if (TM && !TM.joined) tmFatal('방이 응답하지 않습니다.'); }, 9000);
   TM.joinTimer = t;
-  tmGuestConnect(() => tmSend({type: 'hello', id: TM.me, name: TM.name}), (err) => { clearTimeout(t); tmFatal(errText(err)); });
+  tmHookProfile();
+  tmGuestConnect(tmHello, (err) => { clearTimeout(t); tmFatal(errText(err)); });
 }
 // onOpen/onFail fire at most once. Used for first join, rejoin and migration.
 function tmGuestConnect(onOpen, onFail) {
@@ -1525,6 +1583,11 @@ function tmGuestConnect(onOpen, onFail) {
 function tmGuestData(d) {
   if (!d || typeof d.type !== 'string') return;
   if (d.type === 'reject') { tmFatal(typeof d.msg === 'string' ? d.msg.slice(0, 60) : '입장할 수 없습니다.'); return; }
+  if (d.type === 'avatar') {
+    if (typeof d.id !== 'string' || (d.src !== null && !TeamLogic.validAvatar(d.src))) return;
+    if (d.src) TM.av[d.id] = d.src; else delete TM.av[d.id];
+    return tmStones();
+  }
   if (d.type === 'vote') { if (TM.joined) tmOnVote(d); return; }
   if (d.type !== 'snap' || !TeamLogic.validSnap(d)) return;
   const first = !TM.joined;
@@ -1563,11 +1626,42 @@ function tmMigrateStep() {
   const cand = TeamLogic.successor(TM.players, TM.hostId, Math.floor((Date.now() - TM.migr.since) / TM_PICK_MS));
   if (!cand) { tmFatal('방이 사라졌습니다.'); return; }
   TM.busy = true;
-  tmGuestConnect(() => { TM.busy = false; tmSend({type: 'hello', id: TM.me, name: TM.name}); }, (err) => {
+  tmGuestConnect(() => { TM.busy = false; tmHello(); }, (err) => {
     if (!TM) return;
     TM.busy = false;
     if (cand.id === TM.me && err && err.type === 'peer-unavailable') tmTakeover();
   });
+}
+function tmHello() {
+  tmSend({type: 'hello', id: TM.me, name: TM.name});
+  TM.myAv = tmPhoto() || null;
+  if (TM.myAv) tmSend({type: 'avatar', src: TM.myAv});
+}
+
+// ── photo stones. Profile (profile.js) is optional. ──
+const tmPhoto = () => hasProfile() ? Profile.photo() : null;
+let tmHooked = false;
+function tmHookProfile() {
+  if (tmHooked || !hasProfile()) return;
+  tmHooked = true;
+  Profile.onChange(() => {
+    if (!TM) return;
+    const ph = tmPhoto() || null; // onChange also fires for hideOthers etc.: send only a real photo change
+    if (TM.role === 'host') tmHostAvatar(TM.me, ph); else if (ph !== TM.myAv) { TM.myAv = ph; tmSend({type: 'avatar', src: ph}); }
+    tmStones();
+  });
+}
+// Team photo = the team's first player in join order. My own photo always shows; others' obey hideOthers.
+function tmStones() {
+  if (!TM || !hasProfile()) return;
+  const hide = Profile.hideOthers(), src = [1, 2].map(t => {
+    const r = TM.players.find(p => p.team === t);
+    return !r ? null : r.id === TM.me ? tmPhoto() : hide ? null : TM.av[r.id] || null;
+  });
+  const sig = JSON.stringify(src);
+  if (sig === TM.stones) return;
+  TM.stones = sig;
+  Profile.setStone(1, src[0]); Profile.setStone(2, src[1]);
 }
 function tmTakeover() {
   clearInterval(TM.rejoin);
@@ -1602,7 +1696,7 @@ function tmBanner() {
 function tmRender() {
   if (!TM || !TM.joined) return;
   currentPlayer = TM.turn ? TM.turn.team : 1;
-  tmDrawStones();
+  tmDrawStones(); tmStones();
   updateTurn(); updateScores(); tmBadges(); tmBanner(); clockDraw();
   if (lastPlaced && TM.ann !== lastPlaced.row + ',' + lastPlaced.col + board[lastPlaced.row][lastPlaced.col]) {
     TM.ann = lastPlaced.row + ',' + lastPlaced.col + board[lastPlaced.row][lastPlaced.col];
@@ -1669,9 +1763,18 @@ function tmLobby() {
     const ul = document.getElementById('tl' + t);
     ul.textContent = '';
     TM.players.filter(p => p.team === t).forEach(p => {
-      const li = document.createElement('li');
-      li.textContent = (p.id === TM.hostId ? '👑 ' : '') + p.name + (p.id === TM.me ? ' (나)' : '') + (p.online ? '' : ' (끊김)');
+      const li = document.createElement('li'), nm = document.createElement('span');
+      nm.className = 'tl-name'; // ellipsis on the name only, so the "사진 끄기" chip is never clipped
+      nm.textContent = (p.id === TM.hostId ? '👑 ' : '') + p.name + (p.id === TM.me ? ' (나)' : '') + (p.online ? '' : ' (끊김)');
+      li.appendChild(nm);
       if (p.id === TM.me) li.className = 'me'; else if (!p.online) li.className = 'off';
+      if (host && p.id !== TM.me && TM.av[p.id]) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'level-chip av-off'; b.textContent = '사진 끄기';
+        b.setAttribute('aria-label', p.name + ' 사진 끄기');
+        b.onclick = () => tmAvatarOff(p.id);
+        li.appendChild(b);
+      }
       ul.appendChild(li);
     });
     const b = document.getElementById('tb' + t);
@@ -1702,7 +1805,7 @@ function selectColor(color) {
 }
 
 function updateBadges() {
-  applyBoss();
+  applyBoss(); aiStones(true);
   const nBlack = document.getElementById('name-black');
   const nWhite = document.getElementById('name-white');
   const lBlack = document.getElementById('label-black');
@@ -1728,6 +1831,7 @@ function initBoard() {
   drawBoard();
 }
 
+const BOARD_FONT = "700 12px Galmuri11, sans-serif";
 function drawBoard() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
@@ -1741,7 +1845,7 @@ function drawBoard() {
   ctx.fillStyle = '#5c3f18';
   for (const [r,c] of stars) { ctx.beginPath(); ctx.arc(MARGIN+c*CELL, MARGIN+r*CELL, 4, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = 'rgba(80,52,16,0.9)';
-  ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center';
+  ctx.font = BOARD_FONT; ctx.textAlign = 'center';
   const cols = 'ABCDEFGHJKLMNOP';
   for (let i = 0; i < BOARD_SIZE; i++) {
     ctx.fillText(cols[i], MARGIN+i*CELL, 14);
@@ -1962,7 +2066,7 @@ async function flipTable() {
   const B = board, wrap = document.querySelector('.board-wrap'), rm = matchMedia('(prefers-reduced-motion: reduce)').matches, rnd = (a) => (Math.random() - 0.5) * 2 * a;
   const say = document.body.appendChild(document.createElement('div'));
   say.innerHTML = '<img src="img/wonjun-rage.jpg" alt="" style="display:block;max-width:80vw;max-height:45vh;border-radius:10px;box-shadow:0 0 40px #c0392b;margin:0 auto 10px"><div>상 엎어!! (╯°□°)╯︵ ┻━┻</div>';
-  say.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:50;pointer-events:none;text-align:center;font:800 clamp(1.4rem,6vw,2.6rem)/1.2 system-ui,sans-serif;color:#fff;text-shadow:0 0 12px #c0392b,0 2px 6px #000;white-space:nowrap';
+  say.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:50;pointer-events:none;text-align:center;font:700 24px/1.2 var(--font-sans);color:#fff;text-shadow:0 0 12px #c0392b,0 2px 6px #000;white-space:nowrap';
   announce('원준이 상을 엎었습니다. 대국이 처음부터 다시 시작됩니다');
   if (rm) await new Promise(r => setTimeout(r, 1500));
   else {
@@ -2181,8 +2285,73 @@ function scaleBoard(){
 window.addEventListener('resize',scaleBoard);
 window.addEventListener('orientationchange',scaleBoard);
 
+// ─── THEME (attribute set before paint by the inline script in <head>) ───
+function setTheme(t, save) {
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name=theme-color]').content = t === 'light' ? '#f2f2f2' : '#161616';
+  document.getElementById('theme-btn').setAttribute('aria-pressed', t === 'dark');
+  if (save) try { localStorage.setItem('zestmok-theme', t); } catch (e) {}
+}
+function toggleTheme() { setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light', true); }
+
+// ─── PROFILE (global Profile from profile.js; the page works without it) ───
+// Photos only override the stones through --stone-*-img; without them the CSS fallback shows the ZEST photos.
+const hasProfile = () => typeof Profile !== 'undefined';
+// AI mode: my photo on my color once picked; the AI keeps the ZEST photo (boss photos win via !important)
+function aiStones(picked) {
+  if (!hasProfile()) return;
+  Profile.setStone(humanPlayer, picked ? Profile.photo() : null);
+  Profile.setStone(aiPlayer, null);
+}
+function toggleProfileMenu(open) {
+  const m = document.getElementById('profile-menu'), btn = document.getElementById('profile-btn');
+  if (open === undefined) open = m.hidden;
+  m.hidden = !open; btn.setAttribute('aria-expanded', open);
+  if (open) { gsiButton(); m.querySelector('button:not([hidden])').focus(); } else if (m.contains(document.activeElement)) btn.focus();
+}
+document.addEventListener('click', (e) => { if (!document.getElementById('profile-wrap').contains(e.target)) toggleProfileMenu(false); });
+function profileMsg(t) { document.getElementById('pm-msg').textContent = t; if (t) announce(t); }
+let gsiState = ''; // '' | 'ok' | 'fail': official Google button is rendered once, on first menu open (no GIS request on page load)
+function gsiButton() {
+  if (gsiState || Profile.signedIn()) return;
+  gsiState = 'ok';
+  Profile.renderButton(document.getElementById('pm-gsi')).catch(e => { gsiState = 'fail'; profileMsg((e && e.message) || '로그인하지 못했습니다'); renderProfile(); });
+}
+function profileLogin() {
+  profileMsg('');
+  if (Profile.signedIn()) { Profile.logout(); document.querySelector('#profile-menu button:not([hidden])').focus(); return; }
+  Promise.resolve().then(() => Profile.login()).catch(e => profileMsg((e && e.message) || '로그인하지 못했습니다')); // rejects in Korean when One Tap is skipped
+}
+function profileUpload(input) {
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  profileMsg('');
+  Profile.upload(f).catch(e => profileMsg((e && e.message) || '사진을 올리지 못했습니다'));
+}
+function renderProfile() {
+  const src = Profile.photo(), btn = document.getElementById('profile-btn');
+  btn.style.backgroundImage = src ? `url("${src}")` : ''; // src is validated by Profile (TeamLogic.validAvatar charset: no CSS injection)
+  btn.classList.toggle('has-photo', !!src);
+  const inG = Profile.signedIn(), login = document.getElementById('pm-login');
+  login.textContent = inG ? `로그아웃 (${Profile.name() || 'Google'})` : 'Google 로그인';
+  login.hidden = !inG && gsiState !== 'fail'; // signed out: the official button in #pm-gsi; the One Tap button only if it failed to load
+  document.getElementById('pm-gsi').hidden = inG;
+  if (!inG && !document.getElementById('profile-menu').hidden) gsiButton(); // signed out with the menu open (e.g. right after logout)
+  document.getElementById('pm-clear').hidden = !Profile.hasUpload();
+  document.getElementById('pm-hide').setAttribute('aria-pressed', Profile.hideOthers());
+  // photo/login changed mid AI game: repaint my stones (not while picking settings, not in rooms)
+  if (gameMode === 'ai' && !document.querySelector('#select-overlay.show, #mode-overlay.show, #rule-overlay.show')) aiStones(true);
+}
+if (hasProfile()) {
+  document.getElementById('profile-wrap').hidden = false;
+  Profile.onChange(renderProfile);
+  renderProfile();
+}
+
 // Init
+setTheme(document.documentElement.dataset.theme);
 initBoard(); updateTurn(); updateScores(); scaleBoard();
+document.fonts.load(BOARD_FONT).then(drawBoard); // coordinates were drawn with the fallback before the pixel font arrived
 showOverlay('mode-overlay');
 
 </script>
