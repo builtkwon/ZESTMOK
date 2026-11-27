@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#161616">
 <!-- theme before first paint (no flash): saved choice, else the OS setting -->
 <script>(function(){var t;try{t=localStorage.getItem('zestmok-theme')}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';document.documentElement.dataset.theme=t;document.querySelector('meta[name=theme-color]').content=t==='light'?'#f2f2f2':'#161616'})()</script>
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https://lh3.googleusercontent.com; font-src 'self'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://accounts.google.com/gsi/; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style; img-src 'self' data: https://lh3.googleusercontent.com; font-src 'self'; connect-src 'self' https://0.peerjs.com wss://0.peerjs.com https://accounts.google.com/gsi/ https://script.google.com https://script.googleusercontent.com; frame-src https://accounts.google.com/gsi/; object-src 'none'; base-uri 'self'; form-action 'none'">
 <link rel="icon" type="image/svg+xml" href="img/favicon.svg">
 <meta property="og:type" content="website">
 <meta property="og:title" content="ZESTMOK - 오목">
@@ -643,6 +643,8 @@
     font-size: 24px; font-weight: 800;
     color: var(--accent); margin-bottom: 4px; letter-spacing: 0.08em;
   }
+  /* anonymous boss-game collection notice: tiny, close to the background on purpose */
+  .collect-note { order: 9; font-size: 12px; margin: 16px 0 8px; color: color-mix(in srgb, var(--text-secondary) 30%, var(--bg)); text-align: center; }
   .mode-subtitle { font-size: 12px; color: var(--text-secondary); letter-spacing: 0.15em; margin-bottom: 32px; }
   .mode-cards { display: flex; gap: 16px; justify-content: center; }
   .mode-card {
@@ -846,6 +848,7 @@
   <h1>ZESTMOK<span>오목 · made by builtkwon</span></h1>
 </header>
 
+<p class="collect-note">보스 대국 기보는 AI 학습을 위해 익명으로 수집됩니다</p>
 <div class="game-layout">
   <!-- Left Panel -->
   <div class="panel">
@@ -2009,9 +2012,25 @@ function aiMemLoad() {
   let m = null;
   try { m = JSON.parse(localStorage.getItem(memKey())); } catch (e) {}
   GomokuAI.setMemory(m);
+  aiBookLoad();
+}
+// shared boss book (ai-book.js, built by tools/build-book.js from collected games): boss level only, loaded on first use
+function aiBookLoad() {
+  GomokuAI.setBook(aiLevel === 'boss' ? window.AI_BOOK : null);
+  if (aiLevel !== 'boss' || window.AI_BOOK || document.getElementById('ai-book')) return;
+  const s = document.createElement('script');
+  s.id = 'ai-book'; s.src = 'ai-book.js'; s.onload = aiBookLoad;
+  document.head.appendChild(s);
+}
+// every finished boss game goes to the collection sheet (docs/boss-book.md); fire and forget, no reply needed
+const BOOK_SEND = '';
+function aiSend(winner) {
+  if (!BOOK_SEND || aiLevel !== 'boss') return;
+  try { fetch(BOOK_SEND, {method: 'POST', mode: 'no-cors', keepalive: true, body: JSON.stringify({s: 'zestmok', ai: aiPlayer, w: winner, m: aiHist.map(h => [h.row, h.col])})}).catch(() => {}); } catch (e) {}
 }
 function aiLearn(winner) {
   if (gameMode !== 'ai' || aiLevel === 'easy' || !aiHist.length) return;
+  aiSend(winner);
   GomokuAI.learn(aiHist, aiPlayer, winner);
   try { localStorage.setItem(memKey(), JSON.stringify(GomokuAI.getMemory())); } catch (e) {} // full/blocked storage: learn for this tab only
   aiHist = [];
