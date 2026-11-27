@@ -12,7 +12,7 @@
     easy:   { depth: 1, K: 5,  ms: 0,    vcf: 0 },
     normal: { depth: 3, K: 8,  ms: 600,  vcf: 0 },
     hard:   { depth: 4, K: 12, ms: 800,  vcf: 4 },   // measured (tests/duel.js, 80 games): beats normal 64%; boss beats this 77% (31-9 of 40)
-    boss:   { depth: 10, K: 12, ms: 3500, vcf: 16, vctD: 6, def: true, book: true, pat: true }, // 원준: deepest search + VCF/VCT + explicit defense (self-play: beats the old hard 6-2 / 7-1)
+    boss:   { depth: 10, K: 16, ms: 3500, vcf: 16, vctD: 6, def: true, book: true, pat: true, rootK: 24, preD: 3 }, // 원준: deepest search + VCF/VCT + explicit defense (self-play: beats the old hard 6-2 / 7-1)
   };
 
   const inside = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
@@ -621,6 +621,18 @@
     return best;
   }
   const hashOf = (b) => { let h = 0; for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c]) h ^= Z[b[r][c]][r * N + c]; return h; };
+  const ROOT_MIX = 0.3; // root order = searched score + 0.3 x candidate prior (logit units; tuned on M1, docs/boss-ai-v2.md)
+  // boss root ordering: full-window shallow search score of each move (pattern state must be initialised for b)
+  function rootScores(b, p, list, depth, K, dl) {
+    const h0 = hashOf(b);
+    for (const m of list) {
+      const x = m.row * N + m.col;
+      b[m.row][m.col] = p; patSet(x, p);
+      m.sc = -negamax(b, depth - 1, -Infinity, Infinity, 3 - p, K, dl, h0 ^ Z[p][x]);
+      b[m.row][m.col] = 0; patSet(x, 0);
+    }
+    return list;
+  }
 
   function bestMove(b, p, level) {
     const L = LEVELS[level] || LEVELS.normal;
@@ -640,7 +652,7 @@
     const boost = level === 'easy' ? 0 : Math.min(mem.streak, 3);
     const D = L.depth + (boost > 0 ? Math.min(boost, 2) : 0), KK = L.K + boost * 2, MS = L.ms;
     const cand = (k) => PAT ? patCands(b, p, k) : candidates(b, p, k);
-    let cands = cand(KK);
+    let cands = cand(L.rootK ? 999 : KK); // boss: every legal near cell, cut to rootK after the shallow pre-search below
     let bonus = new Map(), lost = false;
     if (level !== 'easy' && cands.length && !cands[0].win && !cands[0].block) cands = unlearned(b, p, cands);
     if (!cands.length) { // every nearby cell is forbidden: any legal empty cell
@@ -676,13 +688,19 @@
           b[m.row][m.col] = 0;
           if (safe && Date.now() <= d0.t) safeMoves.push(m);
         }
-        if (safeMoves.length) { lost = false; cands = safeMoves.slice(0, KK); }
+        if (safeMoves.length) { lost = false; cands = safeMoves.slice(0, L.rootK || KK); }
         if (Date.now() > d0.t) lost = false; // ran out of time: not sure it is lost
       }
     }
+    TT = new Map();
+    if (L.rootK && cands.length > L.rootK) { // boss: rank root moves by a full-window depth-preD search (+ prior), keep rootK + defense cells
+      const pre = { t: Date.now() + MS * 0.1, out: false };
+      rootScores(b, p, cands, L.preD, KK, pre);
+      if (!pre.out) cands.sort((x, y) => (y.sc + ROOT_MIX * y.pri * ESCALE) - (x.sc + ROOT_MIX * x.pri * ESCALE));
+      cands = cands.filter((m, i) => i < L.rootK || bonus.has(m.row * N + m.col));
+    }
     let best = cands[0], rawBest = 0;
     const dl = { t: Date.now() + MS, out: false }, h0 = hashOf(b);
-    TT = new Map();
     for (let depth = 2; depth <= D; depth++) {
       let iterBest = null, bs = -Infinity, alpha = -Infinity, iterRaw = 0;
       const order = best ? [best, ...cands.filter(m => m !== best)] : cands;
@@ -705,7 +723,7 @@
   }
 
   const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict, candidates, canon, toCanon, fromCanon, setOpening, bookMove,
-    nodes: () => NODES, pat: { init: patInit, set: patSet, cands: patCands, eval: patEval, indFeat, cnt: () => CNT, cl: () => CL, ci: () => CI, bd: () => BD, NCB, NI, TAB } }; // pat: tools/tests only
+    nodes: () => NODES, pat: { root: (b, p, list, d, K) => { PAT = true; TT = new Map(); const r = rootScores(b, p, list, d, K, { t: Infinity, out: false }); PAT = false; return r; }, init: patInit, set: patSet, cands: patCands, eval: patEval, indFeat, cnt: () => CNT, cl: () => CL, ci: () => CI, bd: () => BD, NCB, NI, TAB } }; // pat: tools/tests only
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GomokuAI = api;
 })(typeof window !== 'undefined' ? window : globalThis);
