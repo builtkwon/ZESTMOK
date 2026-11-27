@@ -12,7 +12,7 @@
     easy:   { depth: 1, K: 5,  ms: 0,    vcf: 0 },
     normal: { depth: 3, K: 8,  ms: 600,  vcf: 0 },
     hard:   { depth: 4, K: 12, ms: 800,  vcf: 4 },   // measured (tests/duel.js, 80 games): beats normal 64%; boss beats this 77% (31-9 of 40)
-    boss:   { depth: 10, K: 12, ms: 3500, vcf: 16, vctD: 6, def: true, book: true }, // 원준: deepest search + VCF/VCT + explicit defense (self-play: beats the old hard 6-2 / 7-1)
+    boss:   { depth: 10, K: 12, ms: 3500, vcf: 16, vctD: 6, def: true, book: true, pat: true }, // 원준: deepest search + VCF/VCT + explicit defense (self-play: beats the old hard 6-2 / 7-1)
   };
 
   const inside = (r, c) => r >= 0 && r < N && c >= 0 && c < N;
@@ -409,6 +409,8 @@
     return { row: r, col: c };
   }
 
+  let NODES = 0; // negamax calls (tools: speed per node)
+  let PAT = false; // set per bestMove call: search uses the pattern eval/candidates (boss)
   let koreanBlack = false; // set per bestMove call: AI plays black under Korean rules
 
   // candidate moves near existing stones, best first. Forced moves (win / block five) are returned alone.
@@ -435,26 +437,181 @@
     return list.slice(0, K);
   }
 
+  // ── pattern evaluation + candidates (boss only, LEVELS.boss.pat) ────────────
+  // Every empty cell gets, per direction and per player, the shape that player would make by playing there on that line:
+  // a class read from a table indexed by the 10 neighbours on the line (5 each side, 2 bits each: empty/black/white/edge).
+  // Kept up to date stone by stone (patSet touches the 40 cells in line with the stone), so a leaf eval is a dot product of counts.
+  // Classes (what the line becomes; "one more stone" makes the next class up), F = open, B = closed, OL = black 6+:
+  const C_B1 = 1, C_F1 = 2, C_B2 = 3, C_F2 = 4, C_B3 = 5, C_F3 = 6, C_B4 = 7, C_F4 = 8, C_5 = 9, C_OL = 10;
+  const NN = N * N, WINV = 1e6, NCB = 1001; // NCB = sorted 4-tuples of 11 classes
+  let LN = null, SQ, PT, CMEMO, CODE, CL, CNT, NEAR, BD, CI, SV, COMBO, FL, ET, CT;
+  // fitted tables (tools/engine/fit-eval.js --write): 2 chars per combo (B64, 12-bit signed, unit 1/128 logit); iw = indicator weights
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const TAB = { e10: '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', e11: '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', e20: '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', e21: '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', c10: '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', c11: '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', c20: '7G624f6+6v8q8y+6GFAAAA7v4d7I6S8j8w/rGeAAAA4m6C6G7E9N+QFhAAAA6e6/7v+J/9GxAAAA7r8s+MAyHQAAAA+d/kA3DmAAAAA0ErCCAAAAAAAAAAAAAAAAAAAAAAAA7e4X7n8A8f98/jGdAAAA4C5Z6M6p9L/JIOAAAA667a7/+S/YHPAAAA7d8//UAzGqAAAA9x/BAoDPAAAACLFXA2AAAA/8AAAAAAAAAAAAAAAAAA3M4j5c6a9N/oH+AAAA6c6w7f95AlG9AAAA7w8v/mBbF6AAAA9l/9BuF9AAAADOI3/vAAAA/9CFAAAAAAAAAAAAAAAA7u7i7u+r+aGkAAAA8c9JAfAVHAAAAA+MAhBuE2AAAABeD8B7AAAABbAAAAAAAAAAAAAAAAAA9u+nASCvDWAAAA/5BOClDyAAAAEfFaBrAAAAB8AAAAAAAAAAAAAAAAAA+V/MBJ//AAAACnB9DdAAAAAAAAAAAAAAAAAAAAAAAA/yAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA775w7K7R9A+MBkDhAAAA5k6M608P90/AIYAAAA717H78+v+GG6AAAA7V9C/mAlFCAAAA+1+iCJFIAAAAD7DpDkAAAAB8AAAAAAAAAAAAAAAAAA4W466E7L92AIKFAAAA5+6n7d+c/yJ9AAAA8J80/+B+JnAAAA9VAVCcFzAAAADBGoCBAAAACFAAAAAAAAAAAAAAAAAA7T7Y8J/M/JFxAAAA8L7l/3CbGbAAAA+TAHCkB3AAAACfEgCCAAAADXAAAAAAAAAAAAAAAAAA95+bBHCqGuAAAA/uAp+xFBAAAAErFQ/5AAAAAAAAAAAAAAAAAAAAAAAA/jAE/sAAAAAAAwAABfAAAAAAAAAAAAAAAAAAAAAAAA/iAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA0927305F93AkLpAAAA5X467q+iBcL/AAAA7r8yA7C+JNAAAA+zBODoIdAAAAD1JYDeAAAADhAAAAAAAAAAAAAAAAAA6+5m8F+8BLG2AAAA7h88BGDkIeAAAA/j/QCrBwAAAAClF1CBAAAAAAAAAAAAAAAAAAAAAAAA+C+tBdDgG/AAAA+kCXF0CEAAAAEhEfAAAAAAAAAAAAAAAAAAAAAAAAAA/yBo/9AAAAAAFXFZAAAAAAAAAAAAAAAAAAAAAAAAAA/9AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA988P+V/MAqCzAAAA8H+7BxBfHFAAAA+u+hBEB6AAAAE8DVAAAAAAAAAAAAAAAAAAAAAAAAAA9v/xBIDE/8AAAA+UAsC1DnAAAACxEyAAAAAAAAAAAAAAAAAAAAAAAAAA/0A7AAAAAAAA/9B+CCAAAAAA/7AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/kB5BgCECCAAAABAAsBuAAAAAAC1CuAAAAAAB/AAAAAAAAAAAAAAAAAA+2BFAAAAAAAA/8CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/oAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', c21: '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', iw: [[5.233,0.516,-2.096,-1.18,0.017,0.014],[5.33,0.119,-2.383,-1.216,-3.082,-0.007]] }; // fitted: tools/engine/fit-eval.js
+  const SH = (k) => 2 * (k < 0 ? k + 5 : k + 4); // bit position of offset k in a cell's line code
+  function patSetup() { // lazily: only the boss pays for the tables (~2.5 MB)
+    LN = new Int16Array(4 * 11 * NN); // LN[(d * 11 + k + 5) * NN + x] = cell k steps from x along DIRS[d], or -1
+    DIRS.forEach(([dr, dc], d) => { for (let k = -5; k <= 5; k++) for (let x = 0; x < NN; x++) { const r = ((x / N) | 0) + dr * k, c = x % N + dc * k; LN[(d * 11 + k + 5) * NN + x] = inside(r, c) ? r * N + c : -1; } });
+    SQ = []; // cells within 2 (5x5 square)
+    for (let x = 0; x < NN; x++) { const r = (x / N) | 0, c = x % N, s = []; for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) if (inside(r + i, c + j)) s.push((r + i) * N + c + j); SQ.push(Int16Array.from(s)); }
+    PT = [null, new Int8Array(1 << 20).fill(-1), new Int8Array(1 << 20).fill(-1)];
+    CMEMO = [new Int8Array(177147).fill(-1), new Int8Array(177147).fill(-1)];
+    CODE = new Int32Array(4 * NN); CL = [null, new Uint8Array(4 * NN), new Uint8Array(4 * NN)];
+    CNT = [null, new Int32Array(3), new Int32Array(3)]; NEAR = new Int16Array(NN); BD = new Uint8Array(NN);
+    CI = [null, new Uint16Array(NN), new Uint16Array(NN)]; SV = [null, new Float64Array(2), new Float64Array(2)];
+    COMBO = new Uint16Array(11 ** 4); FL = [null, new Uint8Array(NCB), new Uint8Array(NCB)];
+    const idx = new Map();
+    for (let a = 0; a < 11 ** 4; a++) {
+      const cs = [a % 11, ((a / 11) | 0) % 11, ((a / 121) | 0) % 11, (a / 1331) | 0].sort((x, y) => y - x), k = cs.join();
+      if (!idx.has(k)) { const n = idx.size; idx.set(k, n); FL[1][n] = comboFlags(1, cs); FL[2][n] = comboFlags(2, cs); }
+      COMBO[a] = idx.get(k);
+    }
+    const dec = (str) => Float64Array.from({ length: NCB }, (_, i) => { const v = str ? B64.indexOf(str[2 * i]) * 64 + B64.indexOf(str[2 * i + 1]) : 0; return ((v ^ 2048) - 2048) / 128; });
+    ET = [null, [dec(TAB.e10), dec(TAB.e11)], [dec(TAB.e20), dec(TAB.e21)]];
+    CT = [null, [dec(TAB.c10), dec(TAB.c11)], [dec(TAB.c20), dec(TAB.c21)]];
+  }
+  // w: 11 cells, w[5] = the stone just placed; 1 own, 2 blocked (enemy or edge), 0 empty. exact = black (five must be exactly 5)
+  function centerRun(w, exact) { // 1 five through the centre, 2 overline (black), 0 neither
+    let lo = 5, hi = 5;
+    while (lo > 0 && w[lo - 1] === 1) lo--;
+    while (hi < 10 && w[hi + 1] === 1) hi++;
+    const n = hi - lo + 1;
+    return n === 5 || (n > 5 && !exact) ? 1 : n > 5 ? 2 : 0;
+  }
+  function lineClass(w, exact) {
+    let key = 0; for (let i = 0; i < 11; i++) key = key * 3 + w[i];
+    const m = CMEMO[exact][key]; if (m >= 0) return m;
+    let res = 0;
+    const s = centerRun(w, exact);
+    if (s) res = s === 1 ? C_5 : C_OL;
+    else {
+      let fives = 0;
+      for (let e = 0; e < 11; e++) if (!w[e]) { w[e] = 1; if (centerRun(w, exact) === 1) fives++; w[e] = 0; }
+      if (fives) res = fives >= 2 ? C_F4 : C_B4;
+      else for (let e = 0; e < 11; e++) if (!w[e]) { w[e] = 1; const c = lineClass(w, exact); w[e] = 0; if (c >= C_B2 && c <= C_F4 && c - 2 > res) res = c - 2; }
+    }
+    return (CMEMO[exact][key] = res);
+  }
+  const W11 = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+  function patClass(p, code) {
+    const v = PT[p][code]; if (v >= 0) return v;
+    for (let i = 0; i < 11; i++) if (i !== 5) { const s = (code >> (2 * (i < 5 ? i : i - 1))) & 3; W11[i] = !s ? 0 : s === p ? 1 : 2; }
+    W11[5] = 1;
+    return (PT[p][code] = lineClass(W11, p === 1 ? 1 : 0));
+  }
+  // a cell's 4 classes for p, sorted, as one of 1001 combo indexes; per combo: threat flags for p
+  // FL bits: 1 five now, 2 open four / 4-4 / 4-3 (black: not when 3-3 or 6+ makes it forbidden), 4 makes some four
+  function comboFlags(p, cs) {
+    let five = 0, four = 0, f4 = 0, f3 = 0, ol = 0;
+    for (const c of cs) { if (c === C_5) five++; else if (c === C_F4) { f4++; four++; } else if (c === C_B4) four++; else if (c === C_F3) f3++; else if (c === C_OL) ol++; }
+    if (five) return 1 | 4;
+    if (p === 1 && (ol || f3 >= 2)) return four ? 4 : 0; // (likely) forbidden for black
+    return (f4 || four >= 2 || (four && f3) ? 2 : 0) | (four ? 4 : 0);
+  }
+  function ciOf(p, x) { const cl = CL[p]; return COMBO[((cl[x] * 11 + cl[NN + x]) * 11 + cl[2 * NN + x]) * 11 + cl[3 * NN + x]]; }
+  function cellFeat(p, x, s) { // add (s = 1) / remove (s = -1) empty cell x's table values and flags for p
+    const ci = CI[p][x], f = FL[p][ci], sv = SV[p];
+    sv[0] += s * ET[p][0][ci]; sv[1] += s * ET[p][1][ci];
+    if (f & 1) CNT[p][0] += s; if (f & 2) CNT[p][1] += s; if (f & 4) CNT[p][2] += s;
+  }
+  function patInit(b) {
+    if (!LN) patSetup();
+    for (let x = 0; x < NN; x++) BD[x] = b[(x / N) | 0][x % N];
+    CNT[1].fill(0); CNT[2].fill(0); SV[1].fill(0); SV[2].fill(0); NEAR.fill(0);
+    for (let x = 0; x < NN; x++) {
+      if (BD[x]) for (const y of SQ[x]) NEAR[y]++;
+      for (let d = 0; d < 4; d++) {
+        let code = 0;
+        for (let k = -5; k <= 5; k++) if (k) { const y = LN[(d * 11 + k + 5) * NN + x]; code |= (y < 0 ? 3 : BD[y]) << SH(k); }
+        CODE[d * NN + x] = code;
+        if (!BD[x]) { CL[1][d * NN + x] = patClass(1, code); CL[2][d * NN + x] = patClass(2, code); }
+      }
+    }
+    for (let x = 0; x < NN; x++) if (!BD[x]) { CI[1][x] = ciOf(1, x); CI[2][x] = ciOf(2, x); cellFeat(1, x, 1); cellFeat(2, x, 1); }
+  }
+  // place (v = 1|2) or remove (v = 0) a stone at x, updating codes, classes and counts of the cells in line with it
+  function patSet(x, v) {
+    if (v) { cellFeat(1, x, -1); cellFeat(2, x, -1); }
+    for (let d = 0; d < 4; d++) for (let k = -5; k <= 5; k++) {
+      if (!k) continue;
+      const y = LN[(d * 11 - k + 5) * NN + x]; // x sits at offset k from y
+      if (y < 0) continue;
+      const i = d * NN + y, code = (CODE[i] & ~(3 << SH(k))) | (v << SH(k));
+      if (BD[y]) { CODE[i] = code; continue; }
+      cellFeat(1, y, -1); cellFeat(2, y, -1);
+      CODE[i] = code; CL[1][i] = patClass(1, code); CL[2][i] = patClass(2, code);
+      CI[1][y] = ciOf(1, y); CI[2][y] = ciOf(2, y);
+      cellFeat(1, y, 1); cellFeat(2, y, 1);
+    }
+    const sq = SQ[x];
+    if (v) { BD[x] = v; for (let j = 0; j < sq.length; j++) NEAR[sq[j]]++; return; }
+    BD[x] = 0; for (let j = 0; j < sq.length; j++) NEAR[sq[j]]--;
+    for (let d = 0; d < 4; d++) { const i = d * NN + x; CL[1][i] = patClass(1, CODE[i]); CL[2][i] = patClass(2, CODE[i]); }
+    CI[1][x] = ciOf(1, x); CI[2][x] = ciOf(2, x);
+    cellFeat(1, x, 1); cellFeat(2, x, 1);
+  }
+  // Eval for the side to move p (logit of p's winrate, x ESCALE): sum over empty cells of ET[colour][own/opp][combo]
+  // plus threat indicators (weights TAB.iw): p has an open-four-like cell and the opponent no five cell; ... and the
+  // opponent cannot even four; the opponent has a five cell; an open-four-like cell; both; bias.
+  const NI = 6, IF = new Float64Array(NI);
+  function indFeat(p) {
+    const m = CNT[p], o = CNT[3 - p], i0 = m[1] > 0 && !o[0];
+    IF[0] = +i0; IF[1] = +(i0 && !o[2]); IF[2] = +(o[0] > 0); IF[3] = +(o[1] > 0); IF[4] = +(o[0] > 0 && o[1] > 0); IF[5] = 1;
+    return IF;
+  }
+  const ESCALE = 1000;
+  function patEval(p) {
+    const q = 3 - p;
+    if (CNT[p][0]) return WINV;
+    if (CNT[q][0] >= 2) return -WINV;
+    const f = indFeat(p), w = TAB.iw[p - 1];
+    let z = SV[p][0] + SV[q][1];
+    for (let i = 0; i < NI; i++) z += w[i] * f[i];
+    return Math.round(z * ESCALE);
+  }
+  function patCands(b, p, K) {
+    const q = 3 - p, list = [], blocks = [];
+    for (let x = 0; x < NN; x++) {
+      if (BD[x] || !NEAR[x]) continue;
+      let mine5 = false, opp5 = false, f3 = 0, ol = false;
+      for (let d = 0; d < 4; d++) {
+        const c = CL[p][d * NN + x];
+        if (c === C_5) mine5 = true; else if (c === C_F3) f3++; else if (c === C_OL) ol = true;
+        if (CL[q][d * NN + x] === C_5) opp5 = true;
+      }
+      const r = (x / N) | 0, col = x % N;
+      if (mine5) return [{ row: r, col, win: true, block: false, pri: WINV }]; // a five is never forbidden
+      if (p === 1 && (ol || f3 >= 2) && forbidden(b, r, col)) continue; // only such cells can be forbidden (see forbidden)
+      const m = { row: r, col, win: false, block: opp5, pri: CT[p][0][CI[p][x]] + CT[p][1][CI[q][x]] };
+      if (opp5) blocks.push(m);
+      list.push(m);
+    }
+    if (blocks.length) return blocks.slice(0, 2);
+    list.sort((a, b2) => b2.pri - a.pri);
+    return list.slice(0, K);
+  }
+
   // transposition table (per bestMove call): same position reached by a different move order is searched once
   const Z = [0, 1, 2].map(() => Array.from({ length: N * N }, () => (Math.random() * 4294967296) | 0));
   let TT = new Map();
   function negamax(b, depth, alpha, beta, p, K, dl, h) {
+    NODES++;
     if (Date.now() > dl.t) { dl.out = true; return 0; }
-    if (depth === 0) return evaluate(b, p);
+    if (depth === 0) return PAT ? patEval(p) : evaluate(b, p);
     const a0 = alpha, key = h ^ (p === 2 ? 0x5bd1e995 : 0), e = TT.get(key);
     if (e && e.d >= depth) {
       if (e.f === 0) return e.v;
       if (e.f === 1 && e.v > alpha) alpha = e.v; else if (e.f === 2 && e.v < beta) beta = e.v;
       if (alpha >= beta) return e.v;
     }
-    const cands = candidates(b, p, K);
+    const cands = PAT ? patCands(b, p, K) : candidates(b, p, K);
     if (!cands.length) return 0;
     if (cands[0].win) return FIVE + depth;
     let best = -Infinity;
     for (const m of cands) {
-      b[m.row][m.col] = p;
+      b[m.row][m.col] = p; if (PAT) patSet(m.row * N + m.col, p);
       const s = -negamax(b, depth - 1, -beta, -alpha, 3 - p, K, dl, h ^ Z[p][m.row * N + m.col]);
-      b[m.row][m.col] = 0;
+      b[m.row][m.col] = 0; if (PAT) patSet(m.row * N + m.col, 0);
       if (dl.out) return 0;
       if (s > best) best = s;
       if (best > alpha) alpha = best;
@@ -467,10 +624,12 @@
 
   function bestMove(b, p, level) {
     const L = LEVELS[level] || LEVELS.normal;
-    koreanBlack = p === 1;
+    koreanBlack = p === 1 || !!L.pat; // the pattern boss also knows a black opponent cannot play 3-3 / 6+
+    PAT = false;
     const stones = b.flat().filter(Boolean).length;
     if (!stones) return { row: 7, col: 7 };
     if (L.book) { const m = bookMove(b, p); if (m) return m; }
+    if (L.pat) { patInit(b); PAT = true; }
     if (stones === 1) { // answer next to the first stone
       for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (b[r][c]) {
         const d = [[1, 1], [1, -1], [-1, 1], [-1, -1], [0, 1], [1, 0]][Math.floor(Math.random() * 6)];
@@ -480,7 +639,8 @@
     // adaptive: the longer the human's win streak, the deeper/wider the search (normal and up)
     const boost = level === 'easy' ? 0 : Math.min(mem.streak, 3);
     const D = L.depth + (boost > 0 ? Math.min(boost, 2) : 0), KK = L.K + boost * 2, MS = L.ms;
-    let cands = candidates(b, p, KK);
+    const cand = (k) => PAT ? patCands(b, p, k) : candidates(b, p, k);
+    let cands = cand(KK);
     let bonus = new Map(), lost = false;
     if (level !== 'easy' && cands.length && !cands[0].win && !cands[0].block) cands = unlearned(b, p, cands);
     if (!cands.length) { // every nearby cell is forbidden: any legal empty cell
@@ -509,7 +669,7 @@
       if (threat(q)) {
         lost = true;
         const safeMoves = []; // moves that stop the forced win; the search then picks the best of them (not just the first)
-        for (const m of candidates(b, p, 30)) {
+        for (const m of cand(30)) {
           if (Date.now() > d0.t) break;
           b[m.row][m.col] = p;
           const safe = !threat(q);
@@ -527,10 +687,10 @@
       let iterBest = null, bs = -Infinity, alpha = -Infinity, iterRaw = 0;
       const order = best ? [best, ...cands.filter(m => m !== best)] : cands;
       for (const m of order) {
-        b[m.row][m.col] = p;
+        b[m.row][m.col] = p; if (PAT) patSet(m.row * N + m.col, p);
         const bn = bonus.get(m.row * N + m.col) || 0; // defensive bonus: searched score + bonus
         const raw = -negamax(b, depth - 1, -Infinity, bn - alpha, 3 - p, KK, dl, h0 ^ Z[p][m.row * N + m.col]);
-        b[m.row][m.col] = 0;
+        b[m.row][m.col] = 0; if (PAT) patSet(m.row * N + m.col, 0);
         if (dl.out) break;
         const s = raw + bn;
         if (s > bs) { bs = s; iterBest = m; iterRaw = raw; }
@@ -544,7 +704,8 @@
     return lost || rawBest <= -FIVE ? { row: best.row, col: best.col, doomed: true } : best;
   }
 
-  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict, candidates, canon, toCanon, fromCanon, setOpening, bookMove };
+  const api = { LEVELS, bestMove, evaluate, forbidden, forkCells, openFourCells, vct, posKey, rotKey, learn, setMemory, getMemory, setBook, predict, candidates, canon, toCanon, fromCanon, setOpening, bookMove,
+    nodes: () => NODES, pat: { init: patInit, set: patSet, cands: patCands, eval: patEval, indFeat, cnt: () => CNT, cl: () => CL, ci: () => CI, bd: () => BD, NCB, NI, TAB } }; // pat: tools/tests only
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.GomokuAI = api;
 })(typeof window !== 'undefined' ? window : globalThis);

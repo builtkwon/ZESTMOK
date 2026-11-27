@@ -212,4 +212,34 @@ assert(worst < 3500, "move too slow");
   assert(bookMove(e, 2) === null, 'no book near the edge');
   setOpening(null);
 }
+// boss pattern engine: incremental update == full rebuild; forbidden() only where the pattern says it can be
+{
+  const P = require('../ai.js').pat;
+  let seed = 5; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  for (let t = 0; t < 40; t++) {
+    const b = empty(); P.init(b); const st = [];
+    for (let i = 0; i < 50; i++) {
+      if (st.length && rnd() < 0.3) { const [r, c] = st.splice(Math.floor(rnd() * st.length), 1)[0]; b[r][c] = 0; P.set(r * N + c, 0); continue; }
+      const r = 3 + Math.floor(rnd() * 9), c = 3 + Math.floor(rnd() * 9); if (b[r][c]) continue;
+      b[r][c] = rnd() < 0.5 ? 1 : 2; P.set(r * N + c, b[r][c]); st.push([r, c]);
+    }
+    const bd = P.bd(), ci = [1, 2].map(p => Array.from(P.ci()[p]).map((v, x) => bd[x] ? 0 : v)); // occupied cells hold stale combos
+    const inc = JSON.stringify([Array.from(P.cnt()[1]), Array.from(P.cnt()[2]), ci, P.eval(1), P.eval(2)]);
+    P.init(b);
+    const ci2 = [1, 2].map(p => Array.from(P.ci()[p]).map((v, x) => bd[x] ? 0 : v));
+    assert.strictEqual(inc, JSON.stringify([Array.from(P.cnt()[1]), Array.from(P.cnt()[2]), ci2, P.eval(1), P.eval(2)]), 'incremental pattern state equals a rebuild');
+    const cl = P.cl();
+    for (let x = 0; x < N * N; x++) if (!b[(x / N) | 0][x % N] && forbidden(b, (x / N) | 0, x % N)) {
+      let ol = 0, f3 = 0; for (let d = 0; d < 4; d++) { const k = cl[1][d * N * N + x]; if (k === 10) ol++; if (k === 6) f3++; }
+      assert(ol || f3 >= 2, 'forbidden cell must be flagged by the pattern prefilter');
+    }
+  }
+  // boss as black never plays 3-3; boss wins / blocks a five
+  const b = empty(); put(b, 1, [[7, 5], [7, 6], [5, 7], [6, 7]]); put(b, 2, [[0, 0], [0, 2], [14, 14], [14, 12]]);
+  P.init(b); assert(!P.cands(b, 1, 99).some(m => m.row === 7 && m.col === 7), 'pattern candidates skip the 3-3 point');
+  const w = empty(); put(w, 1, [[7, 4], [7, 5], [7, 6], [7, 7]]); put(w, 2, [[8, 5], [8, 6], [8, 7]]);
+  const mw = bestMove(w, 1, 'boss'); assert(mw.row === 7 && (mw.col === 3 || mw.col === 8), 'boss takes the five');
+  const k4 = empty(); put(k4, 2, [[7, 4], [7, 5], [7, 6], [7, 7]]); put(k4, 1, [[7, 3], [8, 5], [8, 6]]);
+  const mk = bestMove(k4, 1, 'boss'); assert(mk.row === 7 && mk.col === 8, 'boss blocks the five');
+}
 console.log('ok');
