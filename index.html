@@ -386,6 +386,7 @@
   .egg-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #f1c40f, #c0392b); }
   .egg-sub { font-size: 20px; min-height: 1.2em; }
   .egg-num { font-size: 40px; min-height: 1.2em; }
+  .egg-quit { position: absolute; bottom: 10vh; left: 50%; transform: translateX(-50%); font: 700 16px/1 var(--font-sans); color: #fff; background: rgba(0,0,0,0.55); border: 2px solid #fff; border-radius: 20px; padding: 10px 22px; cursor: pointer; touch-action: manipulation; }
   .egg img { display: block; max-width: 70vw; max-height: 40vh; border-radius: 10px; margin: 10px auto 0; box-shadow: 0 0 40px #c0392b; }
   @media (prefers-reduced-motion: reduce) { .stone.egg-blink { animation: none; outline: 3px dashed #c0392b; } }
 
@@ -2168,16 +2169,24 @@ async function bossEgg(move) {
   const blink = addStoneElement(move.row, move.col, aiPlayer, false, false); blink.classList.add('egg-blink');
   const ui = document.body.appendChild(document.createElement('div'));
   ui.className = 'egg'; ui.setAttribute('role', 'alert');
-  ui.innerHTML = `<div class="egg-box"><div>${EGG_TAPS}번 내리쳐라!</div><div class="egg-bar"><i></i></div><div class="egg-sub"></div><div class="egg-num"></div></div>`;
+  ui.innerHTML = `<div class="egg-box"><div>${EGG_TAPS}번 내리쳐라!</div><div class="egg-bar"><i></i></div><div class="egg-sub"></div><div class="egg-num"></div></div><button type="button" class="egg-quit">포기하기</button>`;
   const num = ui.querySelector('.egg-num'), sub = ui.querySelector('.egg-sub'), bar = ui.querySelector('.egg-bar i'), box = ui.querySelector('.egg-box');
   announce(`원준이 이기기 직전입니다. 10초 안에 화면을 ${EGG_TAPS}번 두드리면 상을 엎을 수 있습니다`);
+  let quit = false; // 포기하기 (or Escape): straight to the boss's laugh
+  const qb = ui.querySelector('.egg-quit');
+  qb.addEventListener('pointerdown', (e) => e.stopPropagation()); // not a tap
+  qb.addEventListener('touchstart', (e) => e.stopPropagation());
+  qb.addEventListener('click', () => { quit = true; });
+  const hold = async (ms) => { const t = performance.now() + ms; while (!quit && performance.now() < t) await pause(50); }; // a pause 포기하기 cuts short
+  const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); quit = true; } };
+  document.addEventListener('keydown', esc, true);
   ui.addEventListener('touchstart', (e) => e.preventDefault(), {passive: false}); // no zoom / scroll while tapping
   // gauge fills in 1 s, then "바둑판을 탭하세요!" + 3, 2, 1; each tap then drains it, with a 10 s timer
   bar.style.transition = rm ? 'none' : 'width 1s ease-out';
   requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = '100%'; }));
-  await pause(1000);
-  sub.textContent = matchMedia('(pointer: fine)').matches ? '클릭하거나 스페이스바를 누르세요!' : '바둑판을 탭하세요!'; // PC: mouse clicks and Space both count
-  for (const n of [3, 2, 1]) { num.textContent = n; await pause(1000); }
+  await hold(1000);
+  if (!quit) sub.textContent = matchMedia('(pointer: fine)').matches ? '클릭하거나 스페이스바를 누르세요!' : '바둑판을 탭하세요!'; // PC: mouse clicks and Space both count
+  for (const n of [3, 2, 1]) { if (quit) break; num.textContent = n; await hold(1000); }
   bar.style.transition = 'none';
   let taps = 0;
   const hit = () => { if (taps < EGG_TAPS) taps++; bar.style.width = (100 * (EGG_TAPS - taps) / EGG_TAPS) + '%'; if (!rm) wrap.animate([{transform: `translate(${rnd(4)}px,${rnd(4)}px)`}, {transform: 'none'}], {duration: 80}); };
@@ -2185,11 +2194,11 @@ async function bossEgg(move) {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
   ui.addEventListener('pointerdown', hit); document.addEventListener('keydown', key, true); document.addEventListener('keyup', key, true);
   const end = performance.now() + EGG_MS;
-  while (taps < EGG_TAPS && performance.now() < end && board === B && gameMode === 'ai') {
+  while (!quit && taps < EGG_TAPS && performance.now() < end && board === B && gameMode === 'ai') {
     num.textContent = `${Math.ceil((end - performance.now()) / 1000)}초`;
     await pause(50);
   }
-  ui.removeEventListener('pointerdown', hit); document.removeEventListener('keydown', key, true); document.removeEventListener('keyup', key, true);
+  ui.removeEventListener('pointerdown', hit); document.removeEventListener('keydown', key, true); document.removeEventListener('keyup', key, true); document.removeEventListener('keydown', esc, true); qb.remove();
   if (board !== B || gameMode !== 'ai') { ui.remove(); return; } // player left mid-egg
   blink.remove();
   if (taps >= EGG_TAPS) {
